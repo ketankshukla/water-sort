@@ -25,6 +25,9 @@ export function useGame() {
   const boardRef = useRef<HTMLDivElement>(null);
   const tubeEls = useRef<(HTMLDivElement | null)[]>([]);
   const segEls = useRef<(HTMLDivElement | null)[]>([]);
+  // Tubes currently involved in an in-flight pour. Multiple pours can run at
+  // once as long as they use disjoint tubes.
+  const animatingRef = useRef<Set<number>>(new Set());
 
   const [state, setState] = useState<GameState>(() => ({
     level: 1,
@@ -87,12 +90,21 @@ export function useGame() {
 
   useEffect(() => {
     function onResize() {
-      if (stateRef.current.busy) return;
+      if (animatingRef.current.size > 0) return;
       recalcLayout();
     }
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, [recalcLayout]);
+
+  // Win is detected from the committed board, so it works no matter how many
+  // pours were running concurrently when the final one landed.
+  useEffect(() => {
+    if (state.mounted && state.tubes.length > 0 && !state.won && isWon(state.tubes)) {
+      winJingle();
+      setState(prev => ({ ...prev, won: true }));
+    }
+  }, [state.tubes, state.won, state.mounted]);
 
   const buildLevel = useCallback((lv: number) => {
     const { tubes, optimal } = generateLevel(lv);
@@ -101,6 +113,7 @@ export function useGame() {
     const bw = board?.clientWidth || 360;
     const bh = Math.max(board?.clientHeight || 340, 340);
     const positions = computeLayout(tubes.length, bw, bh, lv, tw, th);
+    animatingRef.current.clear();
     setState(prev => ({
       ...prev,
       level: lv,
@@ -118,44 +131,42 @@ export function useGame() {
     }));
   }, []);
 
-  const onWin = useCallback(() => {
-    winJingle();
-    setState(prev => ({ ...prev, won: true }));
-  }, []);
-
   const commitPour = useCallback((from: number, to: number, color: number, count: number) => {
-    // Pours are serial (busy lock), so stateRef holds the current board.
-    const nt = stateRef.current.tubes.map(t => t.slice());
-    for (let k = 0; k < count; k++) nt[from].pop();
-    for (let k = 0; k < count; k++) nt[to].push(color);
-    const won = isWon(nt);
-
-    if (isComplete(nt[to]) && stateRef.current.sound) corkPop();
-    if (won) setTimeout(() => onWin(), 450);
-
-    setState(prev => ({
-      ...prev,
-      tubes: nt,
-      history: [...prev.history, { from, to, count, color }],
-      moves: prev.moves + 1,
-      selected: -1,
-      busy: false,
-      won,
-    }));
-  }, [onWin]);
+    // Apply this pour's delta inside the updater so concurrent pours compose
+    // correctly on top of each other (win is detected by an effect on tubes).
+    setState(prev => {
+      const nt = prev.tubes.map(t => t.slice());
+      for (let k = 0; k < count; k++) nt[from].pop();
+      for (let k = 0; k < count; k++) nt[to].push(color);
+      return {
+        ...prev,
+        tubes: nt,
+        history: [...prev.history, { from, to, count, color }],
+        moves: prev.moves + 1,
+      };
+    });
+    animatingRef.current.delete(from);
+    animatingRef.current.delete(to);
+  }, []);
 
   const doPour = useCallback((from: number, to: number) => {
     const s = stateRef.current;
     const color = topColor(s.tubes[from]);
     const count = Math.min(topRun(s.tubes[from]), CAP - s.tubes[to].length);
     const existing = s.tubes[to].length;
-    setState(prev => ({ ...prev, busy: true, selected: -1 }));
+    const willComplete = existing + count === CAP && s.tubes[to].every(c => c === color);
+    animatingRef.current.add(from);
+    animatingRef.current.add(to);
+    setState(prev => ({ ...prev, selected: -1 }));
 
     const board = boardRef.current;
     const src = tubeEls.current[from];
     const dst = tubeEls.current[to];
     if (!board || !src || !dst) {
-      setTimeout(() => commitPour(from, to, color, count), 50);
+      setTimeout(() => {
+        if (willComplete && stateRef.current.sound) corkPop();
+        commitPour(from, to, color, count);
+      }, 50);
       return;
     }
 
@@ -319,6 +330,7 @@ export function useGame() {
         segsBox.style.transition = "";
         segsBox.style.transform = "";
       }
+      if (willComplete && stateRef.current.sound) corkPop();
       commitPour(from, to, color, count);
       // Remove overlays after React has painted the real segments (avoids flicker).
       requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -329,7 +341,8 @@ export function useGame() {
 
   const selectTube = useCallback((i: number) => {
     const s = stateRef.current;
-    if (s.busy || s.won) return;
+    if (s.won) return;
+    if (animatingRef.current.has(i)) return; // this tube is mid-pour
     if (s.selected === -1) {
       if (!s.tubes[i].length || isComplete(s.tubes[i])) return;
       if (s.sound) clink();
@@ -338,7 +351,7 @@ export function useGame() {
       setState(prev => ({ ...prev, selected: -1 }));
     } else {
       const from = s.selected;
-      if (!canPour(s.tubes, from, i)) {
+      if (animatingRef.current.has(from) || !canPour(s.tubes, from, i)) {
         if (s.sound) blockedSound();
         setState(prev => ({ ...prev, selected: -1 }));
         return;
@@ -349,7 +362,7 @@ export function useGame() {
 
   const undo = useCallback(() => {
     const s = stateRef.current;
-    if (s.busy || !s.history.length) return;
+    if (animatingRef.current.size > 0 || !s.history.length) return;
     if (s.sound) clink();
     setState(prev => {
       const m = prev.history[prev.history.length - 1];
@@ -368,7 +381,7 @@ export function useGame() {
 
   const addTube = useCallback(() => {
     const s = stateRef.current;
-    if (s.busy || s.addUses <= 0) return;
+    if (animatingRef.current.size > 0 || s.addUses <= 0) return;
     if (s.sound) clink();
     setState(prev => {
       const nt = [...prev.tubes, [] as number[]];
@@ -383,13 +396,13 @@ export function useGame() {
 
   const newDeal = useCallback(() => {
     const s = stateRef.current;
-    if (s.busy) return;
+    if (animatingRef.current.size > 0) return;
     buildLevel(s.level);
   }, [buildLevel]);
 
   const hint = useCallback(() => {
     const s = stateRef.current;
-    if (s.busy) return;
+    if (animatingRef.current.size > 0) return;
     const sol = solve(s.tubes);
     if (!sol || !sol.length) {
       if (s.sound) blockedSound();
