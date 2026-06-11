@@ -175,40 +175,33 @@ export function useGame() {
     const right = dr.left >= sr.left;
     const rot = right ? 112 : -112;
 
-    let minTop = Infinity;
-    tubeEls.current.forEach(e => {
-      if (e) {
-        const r = e.getBoundingClientRect();
-        if (r.top < minTop) minTop = r.top;
-      }
-    });
-    const altY = (minTop - 18 - sr.height) - sr.top;
     const dxT = (dr.left + dr.width / 2) - (sr.left + sr.width / 2);
     const mouthY = (dr.top - 9) - sr.top;
+    // Hover just above the destination's rim, then dip to pour. This keeps the
+    // tube travelling directly over the target instead of rising to the top of
+    // the board first (which looked silly for same-row pours).
+    const hoverY = mouthY - 34;
     const segsBox = segEls.current[from];
     const segH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--segh")) || 22;
     const fillEls: HTMLElement[] = [];
 
     src.style.zIndex = "50";
     src.style.transformOrigin = "50% 0";
-    src.style.transition = "transform .16s ease-in";
-    src.style.transform = `translate(0px,${altY}px)`;
+    // Glide diagonally straight over the destination tube.
+    src.style.transition = "transform .28s ease-in-out";
+    src.style.transform = `translate(${dxT}px,${hoverY}px)`;
 
     setTimeout(() => {
-      src.style.transition = "transform .22s ease-in-out";
-      src.style.transform = `translate(${dxT}px,${altY}px)`;
-    }, 170);
-
-    setTimeout(() => {
-      src.style.transition = "transform .24s ease-out";
+      // Dip onto the rim and tilt to pour.
+      src.style.transition = "transform .2s ease-out";
       src.style.transform = `translate(${dxT + (right ? -4 : 4)}px,${mouthY}px) rotate(${rot}deg)`;
       if (segsBox) {
-        segsBox.style.transition = "transform .24s ease-out";
+        segsBox.style.transition = "transform .2s ease-out";
         segsBox.style.transform = `skewY(${right ? -20 : 20}deg)`;
       }
-    }, 410);
+    }, 290);
 
-    const pourStart = 670;
+    const pourStart = 520;
     const holdMs = 240 + count * 110;
 
     setTimeout(() => {
@@ -334,20 +327,17 @@ export function useGame() {
     const pourDone = pourStart + holdMs + 150;
 
     setTimeout(() => {
+      // Untilt and lift back to the hover height above the destination.
       if (segsBox) segsBox.style.transform = "";
-      src.style.transition = "transform .18s ease-in";
-      src.style.transform = `translate(${dxT}px,${altY}px)`;
+      src.style.transition = "transform .2s ease-in";
+      src.style.transform = `translate(${dxT}px,${hoverY}px)`;
     }, pourDone);
 
     setTimeout(() => {
-      src.style.transition = "transform .2s ease-in-out";
-      src.style.transform = `translate(0px,${altY}px)`;
-    }, pourDone + 190);
-
-    setTimeout(() => {
-      src.style.transition = "transform .15s ease-out";
+      // Glide diagonally straight back home.
+      src.style.transition = "transform .28s ease-in-out";
       src.style.transform = "";
-    }, pourDone + 400);
+    }, pourDone + 210);
 
     setTimeout(() => {
       src.style.zIndex = "";
@@ -364,7 +354,7 @@ export function useGame() {
       requestAnimationFrame(() => requestAnimationFrame(() => {
         fillEls.forEach(el => el.remove());
       }));
-    }, pourDone + 570);
+    }, pourDone + 520);
   }, [commitPour]);
 
   const selectTube = useCallback((i: number) => {
@@ -449,6 +439,12 @@ export function useGame() {
     buildLevel(newLevel);
   }, [buildLevel]);
 
+  const restart = useCallback(() => {
+    if (animatingRef.current.size > 0) return;
+    localStorage.setItem("ws_level", "1");
+    buildLevel(1);
+  }, [buildLevel]);
+
   const toggleSound = useCallback(() => {
     setState(prev => {
       const newSound = !prev.sound;
@@ -469,6 +465,7 @@ export function useGame() {
     newDeal,
     hint,
     nextLevel,
+    restart,
     toggleSound,
     recalcLayout,
   };

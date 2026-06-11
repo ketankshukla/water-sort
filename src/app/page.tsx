@@ -10,10 +10,16 @@ import Confetti from "@/components/Confetti";
 export default function Home() {
   const {
     state, boardRef, registerTube, registerSegs,
-    selectTube, undo, addTube, newDeal, hint, nextLevel, toggleSound,
+    selectTube, undo, addTube, newDeal, hint, nextLevel, restart, toggleSound,
   } = useGame();
 
   const stars = state.moves <= state.optimal + 1 ? 3 : (state.moves <= state.optimal + 5 ? 2 : 1);
+
+  const handleRestart = () => {
+    if (state.level <= 1 || window.confirm("Restart from Level 1? Your current progress will be lost.")) {
+      restart();
+    }
+  };
 
   return (
     <main className="flex flex-col items-center min-h-[100dvh] w-full">
@@ -40,6 +46,7 @@ export default function Home() {
         onAdd={addTube}
         onNew={newDeal}
         onHint={hint}
+        onRestart={handleRestart}
       />
       <WinOverlay
         show={state.won}

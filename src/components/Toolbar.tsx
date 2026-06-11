@@ -7,18 +7,20 @@ interface ToolbarProps {
   onAdd: () => void;
   onNew: () => void;
   onHint: () => void;
+  onRestart: () => void;
 }
 
-export default function Toolbar({ canUndo, canAdd, onUndo, onAdd, onNew, onHint }: ToolbarProps) {
+export default function Toolbar({ canUndo, canAdd, onUndo, onAdd, onNew, onHint, onRestart }: ToolbarProps) {
   const tools = [
     { icon: "↩", label: "Undo", onClick: onUndo, disabled: !canUndo },
     { icon: "＋", label: "Add tube", onClick: onAdd, disabled: !canAdd },
     { icon: "⟳", label: "New deal", onClick: onNew, disabled: false },
     { icon: "💡", label: "Hint", onClick: onHint, disabled: false },
+    { icon: "⏮", label: "Level 1", onClick: onRestart, disabled: false },
   ];
 
   return (
-    <div className="w-full max-w-[900px] flex justify-center gap-[18px] px-3 pt-[6px] pb-[26px]">
+    <div className="w-full max-w-[900px] flex flex-wrap justify-center gap-[14px] px-3 pt-[6px] pb-[26px]">
       {tools.map(t => (
         <button
           key={t.label}
