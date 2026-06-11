@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Water Sort — Playable Prototype</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --page:#0D1126;
+    --ink:#e8ecfa;
+    --muted:#7d88ad;
+    --surface:#1a2142;
+    --glass:#4a5478;
+    --glass-sel:#9fb0e8;
+    --accent:#3a7bfa;
+    --accent-ink:#ffffff;
+    --tubew:30px;
+    --tubeh:100px;
+    --segh:22px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0;}
+  body{
+    font-family:'Roboto',sans-serif;
+    background:var(--page);
+    color:var(--ink);
+    font-size:18px;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    overflow-x:hidden;
+  }
+  header{
+    width:100%;
+    max-width:900px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:18px 20px 6px;
+  }
+  .lvl{font-size:27px; font-weight:700;}
+  .moves{font-size:17px; color:var(--muted); font-weight:500;}
+  .tg{
+    width:46px; height:46px; border-radius:50%;
+    border:none; background:var(--surface); color:var(--ink);
+    font-size:21px; cursor:pointer; line-height:1;
+  }
+  #board{
+    width:100%;
+    max-width:900px;
+    flex:1;
+    min-height:340px;
+    position:relative;
+  }
+  .tube{
+    width:var(--tubew);
+    height:var(--tubeh);
+    border:2px solid var(--glass);
+    border-top:none;
+    border-radius:0 0 14px 14px;
+    background:rgba(255,255,255,0.03);
+    position:absolute;
+    cursor:pointer;
+    transition:transform .18s ease, border-color .18s ease;
+    will-change:transform;
+  }
+  .tube.sel{transform:translateY(-12px); border-color:var(--glass-sel);}
+  .tube.done{border-color:#79b88a;}
+  .tube.hintglow{animation:hintpulse .42s ease 3;}
+  @keyframes hintpulse{
+    0%,100%{transform:translateY(0);}
+    50%{transform:translateY(-10px);}
+  }
+  .segs{
+    position:absolute; left:3px; right:3px; bottom:3px;
+    display:flex; flex-direction:column-reverse;
+    border-radius:0 0 10px 10px; overflow:hidden;
+  }
+  .seg{
+    height:var(--segh);
+    transition:height .2s ease;
+  }
+  .stream{
+    position:absolute; width:4px; border-radius:2px;
+    pointer-events:none; z-index:40;
+  }
+  .drop{
+    position:absolute; width:5px; height:5px; border-radius:50%;
+    pointer-events:none; z-index:39;
+    animation:dropfall .45s ease-out forwards;
+  }
+  @keyframes dropfall{
+    from{transform:translate(0,0) scale(1); opacity:.9;}
+    to{transform:translate(var(--dxd,6px),24px) scale(.35); opacity:0;}
+  }
+  .toolbar{
+    width:100%; max-width:900px;
+    display:flex; justify-content:center; gap:18px;
+    padding:6px 12px 26px;
+  }
+  .tool{
+    border:none; background:var(--surface); color:var(--ink);
+    border-radius:18px; padding:12px 10px 9px;
+    min-width:86px; cursor:pointer;
+    font-family:'Roboto',sans-serif; font-size:15px; font-weight:500;
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+  }
+  .tool .ic{font-size:25px; line-height:1;}
+  .tool:disabled{opacity:.38; cursor:default;}
+  .tool:active:not(:disabled){transform:scale(.96);}
+  #overlay{
+    position:fixed; inset:0; background:rgba(2,4,14,0.62);
+    display:none; align-items:center; justify-content:center; z-index:100;
+  }
+  #overlay.show{display:flex;}
+  .panel{
+    background:var(--surface); border-radius:26px;
+    padding:34px 40px 32px; text-align:center;
+    max-width:340px; width:88%;
+  }
+  .panel h2{margin:0 0 6px; font-size:29px; font-weight:700;}
+  .stars{font-size:36px; letter-spacing:6px; color:#E8AE2E; margin:4px 0 2px;}
+  .panel .sub{color:var(--muted); font-size:17px; margin:0 0 20px;}
+  .big{
+    border:none; background:var(--accent); color:var(--accent-ink);
+    font-family:'Roboto',sans-serif; font-size:19px; font-weight:500;
+    border-radius:26px; padding:13px 44px; cursor:pointer;
+  }
+  .big:active{transform:scale(.97);}
+  .confetti{position:fixed; width:11px; height:11px; z-index:99; pointer-events:none;
+    animation:fall 1.5s linear forwards;}
+  @keyframes fall{
+    from{transform:translateY(-30px) rotate(0deg); opacity:1;}
+    to{transform:translateY(82vh) rotate(540deg); opacity:0;}
+  }
+  @media (max-width:520px){
+    :root{--tubew:26px; --tubeh:88px; --segh:19px;}
+    .tool{min-width:72px; font-size:14px;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .tube, .seg{transition:none;}
+    .tube.hintglow{animation:none; border-color:var(--glass-sel);}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="lvl" id="lvlLabel">Level 1</div>
+    <div class="moves" id="movesLabel">moves 0</div>
+  </div>
+  <button class="tg" id="soundBtn" title="Sound on or off" aria-label="Sound on or off">&#128266;</button>
+</header>
+
+<div id="board" aria-label="Puzzle board"></div>
+
+<div class="toolbar">
+  <button class="tool" id="undoBtn"><span class="ic">&#8617;</span>Undo</button>
+  <button class="tool" id="addBtn"><span class="ic">&#65291;</span>Add tube</button>
+  <button class="tool" id="newBtn"><span class="ic">&#10227;</span>New deal</button>
+  <button class="tool" id="hintBtn"><span class="ic">&#128161;</span>Hint</button>
+</div>
+
+<div id="overlay">
+  <div class="panel">
+    <h2>Level complete</h2>
+    <div class="stars" id="starsRow">&#9733;&#9733;&#9733;</div>
+    <p class="sub" id="winSub">18 moves &middot; optimal 16</p>
+    <button class="big" id="nextBtn">Next level</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ---------- palette: 12 maximally distinct colors on dark navy ---------- */
+const PAL = ["#FF3B3B","#FF8A1F","#FFD60A","#8BE32C","#18A957","#22D3EE",
+             "#3B82F6","#A855F7","#FF49C1","#FFFFFF","#C08552","#94A3B8"];
+const CAP = 4;
+const EMPTY_TUBES = 2;
+
+/* ---------- state ---------- */
+let level   = parseInt(localStorage.getItem("ws_level") || "1", 10);
+let sound   = localStorage.getItem("ws_sound") !== "0";
+let tubes   = [];
+let positions = [];
+let history = [];
+let moves   = 0;
+let addUses = 1;
+let optimal = 0;
+let selected = -1;
+let busy = false;
+
+/* ---------- core rules ---------- */
+const topColor = t => t.length ? t[t.length-1] : -1;
+function topRun(t){
+  if(!t.length) return 0;
+  const c = topColor(t); let n = 0;
+  for(let i=t.length-1; i>=0 && t[i]===c; i--) n++;
+  return n;
+}
+const isComplete = t => t.length===CAP && t.every(c => c===t[0]);
+function canPour(a,b){
+  if(a===b || !tubes[a].length || tubes[b].length>=CAP) return false;
+  return tubes[b].length===0 || topColor(tubes[b])===topColor(tubes[a]);
+}
+function isWon(){ return tubes.every(t => t.length===0 || isComplete(t)); }
+
+/* ---------- solver (DFS, canonicalized) ---------- */
+function solve(start, maxNodes){
+  maxNodes = maxNodes || 300000;
+  const s = start.map(t => t.slice());
+  const visited = new Set();
+  const path = [];
+  let nodes = 0;
+  const key = st => st.map(t => t.join(",")).sort().join("|");
+  const solvedAll = st => st.every(t => !t.length || (t.length===CAP && t.every(c=>c===t[0])));
+  function dfs(){
+    if(nodes++ > maxNodes) return false;
+    if(solvedAll(s)) return true;
+    const k = key(s);
+    if(visited.has(k)) return false;
+    visited.add(k);
+    for(let i=0;i<s.length;i++){
+      const a = s[i];
+      if(!a.length) continue;
+      if(a.length===CAP && a.every(c=>c===a[0])) continue;
+      const mono = a.every(c=>c===a[0]);
+      const color = a[a.length-1];
+      let run=0; for(let x=a.length-1; x>=0 && a[x]===color; x--) run++;
+      for(let j=0;j<s.length;j++){
+        if(i===j) continue;
+        const b = s[j];
+        if(b.length>=CAP) continue;
+        if(b.length && b[b.length-1]!==color) continue;
+        if(mono && !b.length) continue;
+        const cnt = Math.min(run, CAP - b.length);
+        for(let x=0;x<cnt;x++){ a.pop(); b.push(color); }
+        path.push({from:i, to:j, count:cnt, color:color});
+        if(dfs()) return true;
+        path.pop();
+        for(let x=0;x<cnt;x++){ b.pop(); a.push(color); }
+      }
+    }
+    return false;
+  }
+  return dfs() ? path.slice() : null;
+}
+
+/* ---------- generator ---------- */
+function colorsForLevel(lv){ return Math.min(8 + Math.floor((lv-1)/2), PAL.length); }
+function generate(lv){
+  const colors = colorsForLevel(lv);
+  for(let attempt=0; attempt<300; attempt++){
+    const bag = [];
+    for(let c=0;c<colors;c++) for(let k=0;k<CAP;k++) bag.push(c);
+    for(let i=bag.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [bag[i],bag[j]] = [bag[j],bag[i]];
+    }
+    const t = [];
+    for(let i=0;i<colors;i++) t.push(bag.slice(i*CAP, (i+1)*CAP));
+    if(t.some(isComplete)) continue;
+    const sol = solve(t.concat(Array.from({length:EMPTY_TUBES}, ()=>[])));
+    if(sol){
+      for(let e=0;e<EMPTY_TUBES;e++) t.push([]);
+      return {tubes:t, optimal:sol.length};
+    }
+  }
+  const t = [];
+  for(let c=0;c<colors;c++) t.push(Array(CAP).fill(c));
+  const a = t[0][CAP-1]; t[0][CAP-1] = t[1][CAP-1]; t[1][CAP-1] = a;
+  for(let e=0;e<EMPTY_TUBES;e++) t.push([]);
+  return {tubes:t, optimal:2};
+}
+
+/* ---------- scattered grid layout (seeded by level, stable per level) ---------- */
+function mulberry32(seed){
+  return function(){
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const cssNum = v => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(v));
+
+function computeLayout(){
+  const n  = tubes.length;
+  const bw = board.clientWidth  || 360;
+  const bh = Math.max(board.clientHeight, 340);
+  const tw = cssNum("--tubew"), th = cssNum("--tubeh");
+
+  const cellW = tw + 34;
+  const cols  = Math.max(3, Math.min(n, Math.floor((bw - 24) / cellW)));
+  const rows  = Math.ceil(n / cols);
+  let cellH   = th + 42;
+  if(rows*cellH > bh - 16) cellH = Math.max(th + 16, Math.floor((bh - 16) / rows));
+  const jit   = Math.min(11, Math.floor((cellH - th) / 2) - 1);
+
+  positions = [];
+  const startY = (bh - rows*cellH) / 2 + 6;
+  let idx = 0;
+  for(let r = 0; r < rows; r++){
+    const inRow  = Math.min(cols, n - r*cols);
+    const stag   = (r % 2) ? cellW*0.32 : 0;
+    const startX = (bw - inRow*cellW) / 2 + (cellW - tw)/2 - stag/2;
+    for(let c = 0; c < inRow; c++){
+      const rng = mulberry32(level*7919 + idx*101 + 13);
+      const zig = (c % 2) ? jit*0.8 : -jit*0.5;
+      positions.push({
+        x: Math.round(startX + c*cellW + stag + (rng()-0.5)*18),
+        y: Math.round(startY + r*cellH + (cellH - th)/2 + zig + (rng()-0.5)*jit*1.6)
+      });
+      idx++;
+    }
+  }
+}
+
+/* ---------- audio: synthesized water pour ---------- */
+let actx = null;
+function ac(){ if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)(); return actx; }
+function blip(freq, dur, type, vol){
+  if(!sound) return;
+  try{
+    const a = ac(), o = a.createOscillator(), g = a.createGain();
+    o.type = type||"sine"; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol||0.12, a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime+dur);
+    o.connect(g).connect(a.destination);
+    o.start(); o.stop(a.currentTime+dur);
+  }catch(e){}
+}
+function pourSound(durMs){
+  if(!sound) return;
+  try{
+    const a = ac(), dur = Math.min(2.0, Math.max(0.45, (durMs||500)/1000));
+    const t0 = a.currentTime;
+
+    /* gurgle bed: noise through a wobbling bandpass whose pitch rises as it fills */
+    const buf = a.createBuffer(1, Math.ceil(a.sampleRate*dur), a.sampleRate);
+    const d = buf.getChannelData(0);
+    for(let i=0;i<d.length;i++) d[i] = Math.random()*2-1;
+    const src = a.createBufferSource(); src.buffer = buf;
+    const bp = a.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 7;
+    bp.frequency.setValueAtTime(620, t0);
+    bp.frequency.linearRampToValueAtTime(1500, t0+dur);
+    const lfo = a.createOscillator(); lfo.frequency.value = 11;
+    const lfoG = a.createGain(); lfoG.gain.value = 300;
+    lfo.connect(lfoG).connect(bp.frequency);
+    const g = a.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.09, t0+0.07);
+    g.gain.setValueAtTime(0.09, t0+Math.max(0.08, dur-0.14));
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+    src.connect(bp).connect(g).connect(a.destination);
+    src.start(t0); lfo.start(t0); lfo.stop(t0+dur);
+
+    /* bubbles: short rising sine pips — the cue the ear reads as liquid */
+    const nb = Math.max(6, Math.floor(dur*15));
+    for(let i=0;i<nb;i++){
+      const bt = t0 + 0.06 + Math.random()*(dur-0.18);
+      const o = a.createOscillator(); o.type = "sine";
+      const f0 = 360 + Math.random()*520;
+      o.frequency.setValueAtTime(f0, bt);
+      o.frequency.exponentialRampToValueAtTime(f0*2.2, bt+0.05);
+      const og = a.createGain();
+      og.gain.setValueAtTime(0.0001, bt);
+      og.gain.exponentialRampToValueAtTime(0.045+Math.random()*0.035, bt+0.012);
+      og.gain.exponentialRampToValueAtTime(0.0001, bt+0.065);
+      o.connect(og).connect(a.destination);
+      o.start(bt); o.stop(bt+0.09);
+    }
+  }catch(e){}
+}
+const clink   = () => blip(660, .09, "triangle", .14);
+const blocked = () => blip(150, .14, "square",   .07);
+function winJingle(){
+  [523, 659, 784, 1047].forEach((f,i)=> setTimeout(()=>blip(f, .22, "triangle", .14), i*120));
+}
+
+/* ---------- rendering ---------- */
+const board = document.getElementById("board");
+
+function render(){
+  board.innerHTML = "";
+  tubes.forEach((t,i)=>{
+    const el = document.createElement("div");
+    el.className = "tube" + (i===selected ? " sel" : "") + (isComplete(t) ? " done" : "");
+    el.dataset.i = i;
+    const p = positions[i] || {x:10, y:10};
+    el.style.left = p.x + "px";
+    el.style.top  = p.y + "px";
+    const segs = document.createElement("div");
+    segs.className = "segs";
+    t.forEach(c=>{
+      const s = document.createElement("div");
+      s.className = "seg";
+      s.style.background = PAL[c];
+      segs.appendChild(s);
+    });
+    if(t.length) segs.style.boxShadow = "0 0 14px " + PAL[topColor(t)] + "55";
+    el.appendChild(segs);
+    el.addEventListener("pointerdown", ()=>tap(i));
+    board.appendChild(el);
+  });
+  document.getElementById("lvlLabel").textContent = "Level " + level;
+  document.getElementById("movesLabel").textContent = "moves " + moves;
+  document.getElementById("undoBtn").disabled = !history.length;
+  document.getElementById("addBtn").disabled = addUses<=0;
+}
+
+/* ---------- interaction ---------- */
+function tap(i){
+  if(busy) return;
+  if(selected===-1){
+    if(!tubes[i].length || isComplete(tubes[i])) return;
+    selected = i; clink(); render();
+  } else if(selected===i){
+    selected = -1; render();
+  } else {
+    const from = selected; selected = -1;
+    if(!canPour(from,i)){ blocked(); render(); return; }
+    doPour(from, i);
+  }
+}
+
+/* ---------- pour choreography ----------
+   P1 rise straight up until the whole tube clears every rim
+   P2 glide horizontally at altitude until directly above the target
+   P3 rotate past vertical (112 deg) around the MOUTH, mouth at the rim
+   pour: stream + slosh + staggered drain/fill (duration scales with amount)
+   P4 rotate back upright above the target
+   P5 glide home at altitude, P6 settle down                         */
+function doPour(from, to){
+  busy = true;
+  const color = topColor(tubes[from]);
+  const count = Math.min(topRun(tubes[from]), CAP - tubes[to].length);
+  const els = board.querySelectorAll(".tube");
+  const src = els[from], dst = els[to];
+  const sr = src.getBoundingClientRect(), dr = dst.getBoundingClientRect();
+  const right = dr.left >= sr.left;
+  const rot = right ? 112 : -112;
+
+  let minTop = Infinity;
+  els.forEach(e => { const r = e.getBoundingClientRect(); if(r.top < minTop) minTop = r.top; });
+  const altY   = (minTop - 18 - sr.height) - sr.top;
+  const dxT    = (dr.left + dr.width/2) - (sr.left + sr.width/2);
+  const mouthY = (dr.top - 9) - sr.top;
+
+  const segsBox = src.querySelector(".segs");
+  src.style.zIndex = 50;
+  src.style.transformOrigin = "50% 0";
+
+  src.style.transition = "transform .16s ease-in";
+  src.style.transform = "translate(0px," + altY + "px)";
+
+  setTimeout(()=>{
+    src.style.transition = "transform .22s ease-in-out";
+    src.style.transform = "translate(" + dxT + "px," + altY + "px)";
+  }, 170);
+
+  setTimeout(()=>{
+    src.style.transition = "transform .24s ease-out";
+    src.style.transform = "translate(" + (dxT + (right? -4 : 4)) + "px," + mouthY + "px) rotate(" + rot + "deg)";
+    if(segsBox){
+      segsBox.style.transition = "transform .24s ease-out";
+      segsBox.style.transform  = "skewY(" + (right? -20 : 20) + "deg)";
+    }
+  }, 410);
+
+  const pourStart = 670;
+  const holdMs = 240 + count*110;
+
+  setTimeout(()=>{
+    pourSound(holdMs + 200);
+    const br = board.getBoundingClientRect();
+    const streamX = dr.left - br.left + dr.width/2 - 2;
+    const stream = document.createElement("div");
+    stream.className = "stream";
+    stream.style.background = PAL[color];
+    stream.style.left = streamX + "px";
+    stream.style.top  = (dr.top - br.top - 7) + "px";
+    stream.style.height = "0px";
+    board.appendChild(stream);
+    requestAnimationFrame(()=>{
+      stream.style.transition = "height .12s linear";
+      stream.style.height = Math.round(dr.height*0.42) + "px";
+    });
+
+    for(let d=0; d<3; d++){
+      const drop = document.createElement("div");
+      drop.className = "drop";
+      drop.style.background = PAL[color];
+      drop.style.setProperty("--dxd", ((d-1)*9) + "px");
+      drop.style.left = streamX + "px";
+      drop.style.top  = (dr.top - br.top + 3) + "px";
+      board.appendChild(drop);
+      setTimeout(()=>drop.remove(), 470);
+    }
+
+    const srcSegs = src.querySelectorAll(".seg");
+    for(let k=0;k<count;k++){
+      const sEl = srcSegs[srcSegs.length-1-k];
+      if(sEl) setTimeout(()=>{ sEl.style.height = "0px"; }, k*110);
+    }
+    const dstSegsBox = dst.querySelector(".segs");
+    if(dstSegsBox) dstSegsBox.style.boxShadow = "0 0 14px " + PAL[color] + "55";
+    for(let k=0;k<count;k++){
+      setTimeout(()=>{
+        const nEl = document.createElement("div");
+        nEl.className = "seg";
+        nEl.style.background = PAL[color];
+        nEl.style.height = "0px";
+        dstSegsBox.appendChild(nEl);
+        requestAnimationFrame(()=>{ nEl.style.height = "var(--segh)"; });
+      }, k*110);
+    }
+    setTimeout(()=>{
+      stream.style.height = "0px";
+      setTimeout(()=>stream.remove(), 140);
+    }, holdMs);
+  }, pourStart);
+
+  const pourDone = pourStart + holdMs + 150;
+
+  setTimeout(()=>{
+    if(segsBox){ segsBox.style.transform = ""; }
+    src.style.transition = "transform .18s ease-in";
+    src.style.transform = "translate(" + dxT + "px," + altY + "px)";
+  }, pourDone);
+
+  setTimeout(()=>{
+    src.style.transition = "transform .2s ease-in-out";
+    src.style.transform = "translate(0px," + altY + "px)";
+  }, pourDone + 190);
+
+  setTimeout(()=>{
+    src.style.transition = "transform .15s ease-out";
+    src.style.transform = "";
+  }, pourDone + 400);
+
+  setTimeout(()=>{
+    for(let k=0;k<count;k++) tubes[from].pop();
+    for(let k=0;k<count;k++) tubes[to].push(color);
+    history.push({from:from, to:to, count:count, color:color});
+    moves++;
+    src.style.zIndex = ""; src.style.transition = ""; src.style.transformOrigin = "";
+    if(segsBox){ segsBox.style.transition = ""; }
+    busy = false;
+    render();
+    if(isWon()) onWin();
+  }, pourDone + 570);
+}
+
+/* ---------- win ---------- */
+function onWin(){
+  winJingle();
+  const stars = moves <= optimal+1 ? 3 : (moves <= optimal+5 ? 2 : 1);
+  document.getElementById("starsRow").innerHTML =
+    "&#9733;".repeat(stars) + "<span style='opacity:.25'>" + "&#9733;".repeat(3-stars) + "</span>";
+  document.getElementById("winSub").textContent = moves + " moves \u00B7 optimal " + optimal;
+  for(let i=0;i<26;i++){
+    const c = document.createElement("div");
+    c.className = "confetti";
+    c.style.left = (5+Math.random()*90) + "vw";
+    c.style.top  = "-12px";
+    c.style.background = PAL[i % PAL.length];
+    c.style.animationDelay = (Math.random()*0.5) + "s";
+    document.body.appendChild(c);
+    setTimeout(()=>c.remove(), 2300);
+  }
+  setTimeout(()=> document.getElementById("overlay").classList.add("show"), 550);
+}
+
+/* ---------- buttons ---------- */
+document.getElementById("undoBtn").addEventListener("click", ()=>{
+  if(busy || !history.length) return;
+  const m = history.pop();
+  for(let k=0;k<m.count;k++) tubes[m.to].pop();
+  for(let k=0;k<m.count;k++) tubes[m.from].push(m.color);
+  moves++; clink(); selected = -1; render();
+});
+document.getElementById("addBtn").addEventListener("click", ()=>{
+  if(busy || addUses<=0) return;
+  addUses--; tubes.push([]); computeLayout(); clink(); render();
+});
+document.getElementById("newBtn").addEventListener("click", ()=>{
+  if(busy) return;
+  buildLevel(level);
+});
+document.getElementById("hintBtn").addEventListener("click", ()=>{
+  if(busy) return;
+  const sol = solve(tubes);
+  if(!sol || !sol.length){ blocked(); return; }
+  clink();
+  const els = board.querySelectorAll(".tube");
+  [sol[0].from, sol[0].to].forEach(i=>{
+    els[i].classList.add("hintglow");
+    setTimeout(()=>els[i].classList.remove("hintglow"), 1400);
+  });
+});
+document.getElementById("nextBtn").addEventListener("click", ()=>{
+  document.getElementById("overlay").classList.remove("show");
+  level++; localStorage.setItem("ws_level", String(level));
+  buildLevel(level);
+});
+document.getElementById("soundBtn").addEventListener("click", ()=>{
+  sound = !sound;
+  localStorage.setItem("ws_sound", sound ? "1" : "0");
+  document.getElementById("soundBtn").innerHTML = sound ? "&#128266;" : "&#128263;";
+  if(sound) clink();
+});
+
+window.addEventListener("resize", ()=>{
+  if(busy) return;
+  computeLayout(); render();
+});
+
+/* ---------- level lifecycle ---------- */
+function buildLevel(lv){
+  const g = generate(lv);
+  tubes = g.tubes; optimal = g.optimal;
+  history = []; moves = 0; addUses = 1; selected = -1; busy = false;
+  computeLayout();
+  render();
+}
+
+document.getElementById("soundBtn").innerHTML = sound ? "&#128266;" : "&#128263;";
+buildLevel(level);
+</script>
+</body>
+</html>

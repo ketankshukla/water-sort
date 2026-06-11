@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --page: #0D1126;
+  --ink: #e8ecfa;
+  --muted: #7d88ad;
+  --surface: #1a2142;
+  --glass: #4a5478;
+  --glass-sel: #9fb0e8;
+  --accent: #3a7bfa;
+  --accent-ink: #ffffff;
+  --tubew: 30px;
+  --tubeh: 100px;
+  --segh: 22px;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Roboto', sans-serif;
+  background: var(--page);
+  color: var(--ink);
+  font-size: 18px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow-x: hidden;
+}
+
+@keyframes fall {
+  from {
+    transform: translateY(-30px) rotate(0deg);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(82vh) rotate(540deg);
+    opacity: 0;
+  }
+}
+
+.animate-fall {
+  animation: fall 1.5s linear forwards;
+}
+
+@keyframes dropfall {
+  from {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.9;
+  }
+  to {
+    transform: translate(var(--dxd, 6px), 24px) scale(0.35);
+    opacity: 0;
+  }
+}
+
+@keyframes hintpulse {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-hintpulse {
+  animation: hintpulse 0.42s ease 3;
+}
+
+@media (max-width: 520px) {
+  :root {
+    --tubew: 26px;
+    --tubeh: 88px;
+    --segh: 19px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tube, .seg {
+    transition: none !important;
+  }
+}
