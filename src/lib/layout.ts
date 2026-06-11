@@ -31,8 +31,10 @@ function gridLayout(n: number, bw: number, bh: number, tubeW: number, tubeH: num
   const sizes = rowSizes(n, 4);
   const rows = sizes.length;
   const maxRow = Math.max(...sizes);
-  const cellW = Math.min(tubeW + 26, Math.floor((bw - 12) / maxRow));
-  const cellH = Math.min(tubeH + 34, Math.floor((bh - 12) / rows));
+  // Spacing leaves room for the tap buffer (15px each side / 18px top) plus a
+  // gap, so neighbouring tap zones never overlap.
+  const cellW = Math.min(tubeW + 42, Math.floor((bw - 10) / maxRow));
+  const cellH = Math.min(tubeH + 38, Math.floor((bh - 10) / rows));
   const startY = (bh - rows * cellH) / 2 + (cellH - tubeH) / 2;
 
   const out: Position[] = [];
@@ -41,8 +43,8 @@ function gridLayout(n: number, bw: number, bh: number, tubeW: number, tubeH: num
     const startX = (bw - inRow * cellW) / 2 + (cellW - tubeW) / 2;
     for (let c = 0; c < inRow; c++) {
       out.push({
-        x: startX + c * cellW + (seed() - 0.5) * 8,
-        y: startY + r * cellH + (seed() - 0.5) * 6,
+        x: startX + c * cellW,
+        y: startY + r * cellH + (seed() - 0.5) * 4,
       });
     }
   }
@@ -66,8 +68,8 @@ function pyramidLayout(n: number, bw: number, bh: number, tubeW: number, tubeH: 
   rows = sizes.length;
 
   const maxRow = Math.max(...sizes);
-  const cellW = Math.min(tubeW + 22, Math.floor((bw - 12) / maxRow));
-  const cellH = Math.min(tubeH + 24, Math.floor((bh - 12) / rows));
+  const cellW = Math.min(tubeW + 40, Math.floor((bw - 10) / maxRow));
+  const cellH = Math.min(tubeH + 34, Math.floor((bh - 10) / rows));
   const startY = (bh - rows * cellH) / 2 + (cellH - tubeH) / 2;
 
   const out: Position[] = [];
@@ -76,7 +78,7 @@ function pyramidLayout(n: number, bw: number, bh: number, tubeW: number, tubeH: 
     const startX = (bw - inRow * cellW) / 2 + (cellW - tubeW) / 2;
     for (let c = 0; c < inRow; c++) {
       out.push({
-        x: startX + c * cellW + (seed() - 0.5) * 6,
+        x: startX + c * cellW,
         y: startY + r * cellH,
       });
     }
@@ -88,7 +90,7 @@ function pyramidLayout(n: number, bw: number, bh: number, tubeW: number, tubeH: 
 function ringLayout(n: number, bw: number, bh: number, tubeW: number, tubeH: number, seed: () => number): Position[] {
   const cx = bw / 2;
   const cy = bh / 2;
-  const outerR = Math.min((bw - tubeW - 16) / 2, (bh - tubeH - 16) / 2);
+  const outerR = Math.min((bw - tubeW - 36) / 2, (bh - tubeH - 36) / 2);
 
   // Decide ring membership: small boards => single ring, larger => center + rings.
   const rings: number[] = [];
@@ -133,7 +135,8 @@ export function computeLayout(
   // Vary the arrangement style with each level for variety.
   const style = level % 3;
   let positions: Position[];
-  if (style === 1) positions = pyramidLayout(n, bw, bh, tubeW, tubeH, seed);
+  // Pyramid only when it stays within 4 buffered rows (n <= 10); otherwise grid.
+  if (style === 1 && n <= 10) positions = pyramidLayout(n, bw, bh, tubeW, tubeH, seed);
   else if (style === 2) positions = ringLayout(n, bw, bh, tubeW, tubeH, seed);
   else positions = gridLayout(n, bw, bh, tubeW, tubeH, seed);
   return clampPositions(positions, bw, bh, tubeW, tubeH);

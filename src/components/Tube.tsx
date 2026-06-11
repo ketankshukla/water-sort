@@ -44,8 +44,10 @@ export default function Tube({
         height: "var(--tubeh)",
       }}
     >
-      {/* Invisible enlarged hit area so a fingertip can tap the thin tube. */}
-      <span className="absolute -inset-x-3 -top-7 -bottom-3" aria-hidden="true" />
+      {/* Invisible enlarged hit area so a fingertip can tap near the thin tube.
+          Buffer sizes are kept in sync with the layout spacing in layout.ts so
+          neighbouring tap zones never overlap. */}
+      <span className="absolute -left-[15px] -right-[15px] -top-[18px] -bottom-[11px]" aria-hidden="true" />
 
       <div
         ref={(el) => { registerSegs(index, el); }}

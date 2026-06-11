@@ -70,7 +70,7 @@ export function useGame() {
     if (!board) return;
     const { tw, th } = getDims();
     const bw = board.clientWidth || 360;
-    const bh = Math.max(board.clientHeight, 480);
+    const bh = Math.max(board.clientHeight, 600);
     const s = stateRef.current;
     const positions = computeLayout(s.tubes.length, bw, bh, s.level, tw, th);
     setState(prev => ({ ...prev, positions, boardSize: { w: bw, h: bh } }));
@@ -111,7 +111,7 @@ export function useGame() {
     const board = boardRef.current;
     const { tw, th } = getDims();
     const bw = board?.clientWidth || 360;
-    const bh = Math.max(board?.clientHeight || 480, 480);
+    const bh = Math.max(board?.clientHeight || 600, 600);
     const positions = computeLayout(tubes.length, bw, bh, lv, tw, th);
     animatingRef.current.clear();
     setState(prev => ({
@@ -406,7 +406,7 @@ export function useGame() {
       const board = boardRef.current;
       const { tw, th } = getDims();
       const bw = board?.clientWidth || prev.boardSize.w;
-      const bh = Math.max(board?.clientHeight || prev.boardSize.h, 480);
+      const bh = Math.max(board?.clientHeight || prev.boardSize.h, 600);
       const positions = computeLayout(nt.length, bw, bh, prev.level, tw, th);
       return { ...prev, tubes: nt, addUses: prev.addUses - 1, positions, boardSize: { w: bw, h: bh } };
     });
