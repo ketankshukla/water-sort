@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { PAL, CAP, Tube as TubeType } from "@/lib/game";
 
 interface TubeProps {
@@ -25,6 +26,20 @@ export default function Tube({
   const glow = top >= 0 ? `0 0 14px ${PAL[top]}55` : undefined;
   const done = isComplete(tube);
 
+  // Pointer-based tap so a tap still registers on mobile even with a little
+  // finger movement (the browser otherwise cancels the click as a scroll).
+  const down = useRef<{ x: number; y: number; t: number } | null>(null);
+  const onPointerDown = (e: React.PointerEvent) => {
+    down.current = { x: e.clientX, y: e.clientY, t: Date.now() };
+  };
+  const onPointerUp = (e: React.PointerEvent) => {
+    const d = down.current;
+    down.current = null;
+    if (!d) return;
+    const moved = Math.abs(e.clientX - d.x) > 24 || Math.abs(e.clientY - d.y) > 24;
+    if (!moved && Date.now() - d.t < 800) onClick();
+  };
+
   const borderClass = selected
     ? "border-[#9fb0e8] -translate-y-3"
     : done
@@ -34,20 +49,22 @@ export default function Tube({
   return (
     <div
       ref={(el) => { registerTube(index, el); }}
-      onClick={onClick}
-      className={`absolute cursor-pointer transition-transform duration-150 ease-out border-2 border-t-0 rounded-b-[14px] bg-white/[0.03] select-none
-        ${borderClass} ${hinted ? "animate-hintpulse !border-[#9fb0e8]" : ""}`}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
       style={{
         left: x,
         top: y,
         width: "var(--tubew)",
         height: "var(--tubeh)",
+        touchAction: "manipulation",
       }}
+      className={`absolute cursor-pointer transition-transform duration-150 ease-out border-2 border-t-0 rounded-b-[14px] bg-white/[0.03] select-none
+        ${borderClass} ${hinted ? "animate-hintpulse !border-[#9fb0e8]" : ""}`}
     >
       {/* Invisible enlarged hit area so a fingertip can tap near the thin tube.
           Buffer sizes are kept in sync with the layout spacing in layout.ts so
           neighbouring tap zones never overlap. */}
-      <span className="absolute -left-[15px] -right-[15px] -top-[18px] -bottom-[11px]" aria-hidden="true" />
+      <span className="absolute -left-[22px] -right-[22px] -top-[24px] -bottom-[16px]" aria-hidden="true" />
 
       <div
         ref={(el) => { registerSegs(index, el); }}

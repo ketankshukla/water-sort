@@ -31,10 +31,10 @@ function gridLayout(n: number, bw: number, bh: number, tubeW: number, tubeH: num
   const sizes = rowSizes(n, 4);
   const rows = sizes.length;
   const maxRow = Math.max(...sizes);
-  // Spacing leaves room for the tap buffer (15px each side / 18px top) plus a
-  // gap, so neighbouring tap zones never overlap.
-  const cellW = Math.min(tubeW + 42, Math.floor((bw - 10) / maxRow));
-  const cellH = Math.min(tubeH + 38, Math.floor((bh - 10) / rows));
+  // Spacing leaves room for the tap buffer (22px each side / 24px top + 16px
+  // bottom) plus a gap, so neighbouring tap zones never overlap.
+  const cellW = Math.min(tubeW + 54, Math.floor((bw - 8) / maxRow));
+  const cellH = Math.min(tubeH + 48, Math.floor((bh - 8) / rows));
   const startY = (bh - rows * cellH) / 2 + (cellH - tubeH) / 2;
 
   const out: Position[] = [];
@@ -68,8 +68,8 @@ function pyramidLayout(n: number, bw: number, bh: number, tubeW: number, tubeH: 
   rows = sizes.length;
 
   const maxRow = Math.max(...sizes);
-  const cellW = Math.min(tubeW + 40, Math.floor((bw - 10) / maxRow));
-  const cellH = Math.min(tubeH + 34, Math.floor((bh - 10) / rows));
+  const cellW = Math.min(tubeW + 52, Math.floor((bw - 8) / maxRow));
+  const cellH = Math.min(tubeH + 44, Math.floor((bh - 8) / rows));
   const startY = (bh - rows * cellH) / 2 + (cellH - tubeH) / 2;
 
   const out: Position[] = [];
