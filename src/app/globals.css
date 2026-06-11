@@ -77,6 +77,25 @@ body {
   animation: hintpulse 0.42s ease 3;
 }
 
+@keyframes corkpop {
+  0% {
+    transform: translateY(-16px) scale(0.9);
+    opacity: 0;
+  }
+  60% {
+    transform: translateY(3px) scale(1.04);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-corkpop {
+  animation: corkpop 0.32s ease-out;
+}
+
 @media (max-width: 520px) {
   :root {
     --tubew: 26px;

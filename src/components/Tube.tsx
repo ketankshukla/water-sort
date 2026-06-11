@@ -60,6 +60,17 @@ export default function Tube({
           />
         ))}
       </div>
+
+      {done && (
+        <div
+          className="absolute left-[-4px] right-[-4px] top-[-9px] h-[14px] rounded-[5px] z-[2] animate-corkpop"
+          style={{
+            background: "linear-gradient(#d2a878, #a3743f 60%, #875e30)",
+            boxShadow: "0 2px 5px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.35)",
+          }}
+          aria-hidden="true"
+        />
+      )}
     </div>
   );
 }

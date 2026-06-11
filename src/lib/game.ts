@@ -76,8 +76,10 @@ export function solve(start: Tube[], maxNodes = 300000): Move[] | null {
   return dfs() ? path.slice() : null;
 }
 
+// Gentle difficulty ramp so early levels are actually beatable:
+// L1-2: 4 colors, then +1 color every 2 levels, capped at the palette size.
 export function colorsForLevel(lv: number): number {
-  return Math.min(8 + Math.floor((lv - 1) / 2), PAL.length);
+  return Math.min(4 + Math.floor((lv - 1) / 2), PAL.length);
 }
 
 export function generateLevel(lv: number): { tubes: Tube[]; optimal: number } {
