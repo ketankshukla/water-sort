@@ -146,7 +146,7 @@ export function useGame() {
     const s = stateRef.current;
     const color = topColor(s.tubes[from]);
     const count = Math.min(topRun(s.tubes[from]), CAP - s.tubes[to].length);
-    if (s.sound) pourSound(240 + count * 110 + 200);
+    const existing = s.tubes[to].length;
     setState(prev => ({ ...prev, busy: true, selected: -1 }));
 
     const board = boardRef.current;
@@ -173,6 +173,8 @@ export function useGame() {
     const dxT = (dr.left + dr.width / 2) - (sr.left + sr.width / 2);
     const mouthY = (dr.top - 9) - sr.top;
     const segsBox = segEls.current[from];
+    const segH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--segh")) || 22;
+    const fillEls: HTMLElement[] = [];
 
     src.style.zIndex = "50";
     src.style.transformOrigin = "50% 0";
@@ -197,8 +199,18 @@ export function useGame() {
     const holdMs = 240 + count * 110;
 
     setTimeout(() => {
+      // Sound starts exactly when the liquid begins to pour.
+      if (stateRef.current.sound) pourSound(holdMs + 200);
+
       const br = board.getBoundingClientRect();
+      const innerLeft = dr.left - br.left + 3;
+      const innerWidth = dr.width - 6;
+      const containerBottom = dr.bottom - br.top - 3;
       const streamX = dr.left - br.left + dr.width / 2 - 2;
+      const surfaceY = containerBottom - existing * segH;
+
+      // Pouring stream connecting the tilted mouth down to the liquid surface.
+      const streamTop = dr.top - br.top - 6;
       const stream = document.createElement("div");
       stream.style.position = "absolute";
       stream.style.width = "4px";
@@ -207,12 +219,12 @@ export function useGame() {
       stream.style.zIndex = "40";
       stream.style.background = PAL[color];
       stream.style.left = streamX + "px";
-      stream.style.top = (dr.top - br.top - 7) + "px";
+      stream.style.top = streamTop + "px";
       stream.style.height = "0px";
       board.appendChild(stream);
       requestAnimationFrame(() => {
         stream.style.transition = "height .12s linear";
-        stream.style.height = Math.round(dr.height * 0.42) + "px";
+        stream.style.height = Math.max(10, surfaceY - streamTop) + "px";
       });
 
       for (let d = 0; d < 3; d++) {
@@ -232,12 +244,41 @@ export function useGame() {
         setTimeout(() => drop.remove(), 470);
       }
 
+      // Drain the source tube one unit at a time (top unit first).
       if (segsBox) {
         const kids = segsBox.children;
         for (let k = 0; k < count; k++) {
           const el = kids[kids.length - 1 - k] as HTMLElement | undefined;
           if (el) setTimeout(() => { el.style.height = "0px"; }, k * 110);
         }
+      }
+
+      // Grow the destination block(s) from the bottom up, in sync with the drain,
+      // so the level square visibly forms as the liquid pours in.
+      for (let k = 0; k < count; k++) {
+        const bandIndex = existing + k;
+        const bandTop = containerBottom - (bandIndex + 1) * segH;
+        const fill = document.createElement("div");
+        fill.style.position = "absolute";
+        fill.style.left = innerLeft + "px";
+        fill.style.width = innerWidth + "px";
+        fill.style.top = bandTop + "px";
+        fill.style.height = segH + "px";
+        fill.style.background = PAL[color];
+        fill.style.transformOrigin = "bottom";
+        fill.style.transform = "scaleY(0)";
+        fill.style.zIndex = "38";
+        fill.style.pointerEvents = "none";
+        if (bandIndex === 0) {
+          fill.style.borderBottomLeftRadius = "9px";
+          fill.style.borderBottomRightRadius = "9px";
+        }
+        board.appendChild(fill);
+        fillEls.push(fill);
+        setTimeout(() => {
+          fill.style.transition = "transform .16s ease-out";
+          fill.style.transform = "scaleY(1)";
+        }, 60 + k * 110);
       }
 
       setTimeout(() => {
@@ -274,6 +315,10 @@ export function useGame() {
         segsBox.style.transform = "";
       }
       commitPour(from, to, color, count);
+      // Remove overlays after React has painted the real segments (avoids flicker).
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        fillEls.forEach(el => el.remove());
+      }));
     }, pourDone + 570);
   }, [commitPour]);
 
