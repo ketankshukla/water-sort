@@ -21,6 +21,16 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Touch: eliminate the 300ms tap delay and accidental zoom/selection on the
+   tubes and buttons so finger taps register instantly. */
+button,
+[role="button"],
+.cursor-pointer {
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
 html, body {
   margin: 0;
   padding: 0;

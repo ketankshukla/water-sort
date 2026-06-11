@@ -1,8 +1,18 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Water Sort — Playable Prototype",
+};
+
+// Touchscreen-friendly: lock zoom so taps are instant and a quick double-tap
+// on a tube never triggers page zoom.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: "#0D1126",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

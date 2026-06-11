@@ -44,6 +44,9 @@ export default function Tube({
         height: "var(--tubeh)",
       }}
     >
+      {/* Invisible enlarged hit area so a fingertip can tap the thin tube. */}
+      <span className="absolute -inset-x-3 -top-7 -bottom-3" aria-hidden="true" />
+
       <div
         ref={(el) => { registerSegs(index, el); }}
         className="absolute left-[3px] right-[3px] bottom-[3px] flex flex-col-reverse rounded-b-[10px] overflow-hidden"
