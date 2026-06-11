@@ -17,8 +17,22 @@ export interface GameState {
   sound: boolean;
   hinted: number[];
   mounted: boolean;
+  score: number;
+  lastScore: number;
   boardSize: { w: number; h: number };
   tubeSize: { w: number; h: number; segH: number };
+}
+
+const SAVE_KEY = "ws_save";
+const SCORE_KEY = "ws_score";
+
+// Points for finishing a level: rewards higher levels and fewer moves.
+function levelScore(level: number, moves: number, optimal: number, stars: number): number {
+  return Math.max(50, 200 + level * 20 + stars * 100 - Math.max(0, moves - optimal) * 5);
+}
+
+export function starsFor(moves: number, optimal: number): number {
+  return moves <= optimal + 1 ? 3 : moves <= optimal + 5 ? 2 : 1;
 }
 
 export function useGame() {
@@ -43,6 +57,8 @@ export function useGame() {
     sound: true,
     hinted: [],
     mounted: false,
+    score: 0,
+    lastScore: 0,
     boardSize: { w: 360, h: 340 },
     tubeSize: { w: 30, h: 100, segH: 22 },
   }));
@@ -76,13 +92,54 @@ export function useGame() {
     setState(prev => ({ ...prev, positions, boardSize: { w: bw, h: bh } }));
   }, []);
 
-  // Build the first level only after mount to avoid SSR/hydration mismatch
+  // Build the first level only after mount to avoid SSR/hydration mismatch.
+  // If a saved in-progress board exists in localStorage, resume it.
   useEffect(() => {
-    const lvl = parseInt(localStorage.getItem("ws_level") || "1", 10);
     const snd = localStorage.getItem("ws_sound") !== "0";
-    const { tubes, optimal } = generateLevel(lvl);
-    setState(prev => ({ ...prev, level: lvl, sound: snd, tubes, optimal, mounted: true }));
+    const score = parseInt(localStorage.getItem(SCORE_KEY) || "0", 10) || 0;
+
+    let resumed: Partial<GameState> | null = null;
+    try {
+      const raw = localStorage.getItem(SAVE_KEY);
+      const saved = raw ? JSON.parse(raw) : null;
+      if (saved && Array.isArray(saved.tubes) && saved.tubes.length > 0) {
+        resumed = {
+          level: saved.level ?? 1,
+          tubes: saved.tubes as Tube[],
+          moves: saved.moves ?? 0,
+          history: Array.isArray(saved.history) ? saved.history : [],
+          addUses: saved.addUses ?? 1,
+          optimal: saved.optimal ?? 0,
+          won: !!saved.won,
+        };
+      }
+    } catch {
+      resumed = null;
+    }
+
+    if (resumed) {
+      setState(prev => ({ ...prev, ...resumed, sound: snd, score, mounted: true }));
+    } else {
+      const lvl = parseInt(localStorage.getItem("ws_level") || "1", 10);
+      const { tubes, optimal } = generateLevel(lvl);
+      setState(prev => ({ ...prev, level: lvl, sound: snd, score, tubes, optimal, mounted: true }));
+    }
   }, []);
+
+  // Auto-save the in-progress board so the game resumes on reload (this device).
+  useEffect(() => {
+    if (!state.mounted || state.tubes.length === 0) return;
+    const save = {
+      level: state.level,
+      tubes: state.tubes,
+      moves: state.moves,
+      history: state.history,
+      addUses: state.addUses,
+      optimal: state.optimal,
+      won: state.won,
+    };
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch { /* storage full / disabled */ }
+  }, [state.mounted, state.tubes, state.moves, state.history, state.addUses, state.optimal, state.won, state.level]);
 
   useEffect(() => {
     recalcLayout();
@@ -102,9 +159,15 @@ export function useGame() {
   useEffect(() => {
     if (state.mounted && state.tubes.length > 0 && !state.won && isWon(state.tubes)) {
       winJingle();
-      setState(prev => ({ ...prev, won: true }));
+      const stars = starsFor(state.moves, state.optimal);
+      const pts = levelScore(state.level, state.moves, state.optimal, stars);
+      setState(prev => {
+        const total = prev.score + pts;
+        try { localStorage.setItem(SCORE_KEY, String(total)); } catch { /* ignore */ }
+        return { ...prev, won: true, score: total, lastScore: pts };
+      });
     }
-  }, [state.tubes, state.won, state.mounted]);
+  }, [state.tubes, state.won, state.mounted, state.moves, state.optimal, state.level]);
 
   const buildLevel = useCallback((lv: number) => {
     const { tubes, optimal } = generateLevel(lv);
@@ -442,6 +505,9 @@ export function useGame() {
   const restart = useCallback(() => {
     if (animatingRef.current.size > 0) return;
     localStorage.setItem("ws_level", "1");
+    localStorage.setItem(SCORE_KEY, "0");
+    localStorage.removeItem(SAVE_KEY);
+    setState(prev => ({ ...prev, score: 0, lastScore: 0 }));
     buildLevel(1);
   }, [buildLevel]);
 

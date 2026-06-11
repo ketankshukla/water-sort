@@ -1,6 +1,6 @@
 "use client";
 
-import { useGame } from "@/hooks/useGame";
+import { useGame, starsFor } from "@/hooks/useGame";
 import GameHeader from "@/components/GameHeader";
 import GameBoard from "@/components/GameBoard";
 import Toolbar from "@/components/Toolbar";
@@ -13,7 +13,7 @@ export default function Home() {
     selectTube, undo, addTube, newDeal, hint, nextLevel, restart, toggleSound,
   } = useGame();
 
-  const stars = state.moves <= state.optimal + 1 ? 3 : (state.moves <= state.optimal + 5 ? 2 : 1);
+  const stars = starsFor(state.moves, state.optimal);
 
   const handleRestart = () => {
     if (state.level <= 1 || window.confirm("Restart from Level 1? Your current progress will be lost.")) {
@@ -26,6 +26,7 @@ export default function Home() {
       <GameHeader
         level={state.level}
         moves={state.moves}
+        score={state.score}
         sound={state.sound}
         onToggleSound={toggleSound}
       />
@@ -53,6 +54,8 @@ export default function Home() {
         stars={stars}
         moves={state.moves}
         optimal={state.optimal}
+        lastScore={state.lastScore}
+        totalScore={state.score}
         onNext={nextLevel}
       />
       <Confetti active={state.won} />
