@@ -61,6 +61,15 @@ export default function Tube({
         ))}
       </div>
 
+      <div
+        className="pointer-events-none absolute inset-0 rounded-b-[14px]"
+        style={{
+          background:
+            "linear-gradient(100deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.05) 16%, rgba(255,255,255,0) 34%, rgba(255,255,255,0) 68%, rgba(255,255,255,0.04) 84%, rgba(255,255,255,0.12) 100%)",
+        }}
+        aria-hidden="true"
+      />
+
       {done && (
         <div
           className="absolute left-[-4px] right-[-4px] top-[-9px] h-[14px] rounded-[5px] z-[2] animate-corkpop"

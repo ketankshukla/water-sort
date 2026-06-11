@@ -82,24 +82,47 @@ export function colorsForLevel(lv: number): number {
   return Math.min(4 + Math.floor((lv - 1) / 2), PAL.length);
 }
 
+// Build a partially-filled, always-solvable board.
+// Liquid is spread across (colors + 1) tubes so not every tube starts full,
+// plus EMPTY_TUBES empty tubes. The solver verifies the board is completable
+// WITHOUT adding tubes, so the player only rarely needs the "Add tube" relief.
 export function generateLevel(lv: number): { tubes: Tube[]; optimal: number } {
   const colors = colorsForLevel(lv);
-  for (let attempt = 0; attempt < 300; attempt++) {
+  const units = colors * CAP;
+  const liquidTubes = colors + 1;
+
+  for (let attempt = 0; attempt < 400; attempt++) {
     const bag: number[] = [];
     for (let c = 0; c < colors; c++) for (let k = 0; k < CAP; k++) bag.push(c);
     for (let i = bag.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [bag[i], bag[j]] = [bag[j], bag[i]];
     }
+
+    // Random fill sizes in [1, CAP] for each liquid tube, summing to `units`.
+    const sizes = new Array(liquidTubes).fill(1);
+    let remaining = units - liquidTubes;
+    while (remaining > 0) {
+      const i = Math.floor(Math.random() * liquidTubes);
+      if (sizes[i] < CAP) { sizes[i]++; remaining--; }
+    }
+
     const t: Tube[] = [];
-    for (let i = 0; i < colors; i++) t.push(bag.slice(i * CAP, (i + 1) * CAP));
+    let pos = 0;
+    for (let i = 0; i < liquidTubes; i++) {
+      t.push(bag.slice(pos, pos + sizes[i]));
+      pos += sizes[i];
+    }
     if (t.some(isComplete)) continue;
-    const sol = solve(t.concat(Array.from({ length: EMPTY_TUBES }, () => [])));
-    if (sol) {
-      for (let e = 0; e < EMPTY_TUBES; e++) t.push([]);
-      return { tubes: t, optimal: sol.length };
+
+    const board = t.concat(Array.from({ length: EMPTY_TUBES }, () => []));
+    const sol = solve(board.map(x => x.slice()));
+    if (sol && sol.length >= colors) {
+      return { tubes: board, optimal: sol.length };
     }
   }
+
+  // Fallback: full tubes + empties (always solvable).
   const t: Tube[] = [];
   for (let c = 0; c < colors; c++) t.push(Array(CAP).fill(c));
   const a = t[0][CAP - 1];

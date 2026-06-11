@@ -96,6 +96,20 @@ body {
   animation: corkpop 0.32s ease-out;
 }
 
+/* Moving liquid surface: scrolls the tiled wave SVG sideways. */
+@keyframes liquidwave {
+  from { background-position-x: 0; }
+  to { background-position-x: 36px; }
+}
+
+/* Little fluid wobble once the level finishes rising. */
+@keyframes liquidsettle {
+  0% { transform: scaleY(1); }
+  30% { transform: scaleY(1.06); }
+  62% { transform: scaleY(0.975); }
+  100% { transform: scaleY(1); }
+}
+
 @media (max-width: 520px) {
   :root {
     --tubew: 26px;

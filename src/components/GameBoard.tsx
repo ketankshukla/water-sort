@@ -21,7 +21,7 @@ export default function GameBoard({
   return (
     <div
       ref={boardRef}
-      className="w-full max-w-[900px] flex-1 min-h-[340px] relative"
+      className="w-full max-w-[900px] flex-1 min-h-[480px] relative"
       aria-label="Puzzle board"
     >
       {tubes.map((t, i) => (

@@ -9,6 +9,117 @@ function mulberry32(seed: number) {
   };
 }
 
+function clampPositions(p: Position[], bw: number, bh: number, tubeW: number, tubeH: number): Position[] {
+  return p.map(({ x, y }) => ({
+    x: Math.round(Math.max(4, Math.min(bw - tubeW - 4, x))),
+    y: Math.round(Math.max(4, Math.min(bh - tubeH - 4, y))),
+  }));
+}
+
+// Rows whose sizes are as even as possible, capped at `maxRows` rows.
+function rowSizes(n: number, maxRows: number): number[] {
+  const rows = Math.min(maxRows, n);
+  const base = Math.floor(n / rows);
+  let extra = n - base * rows;
+  const sizes: number[] = [];
+  for (let r = 0; r < rows; r++) sizes.push(base + (extra-- > 0 ? 1 : 0));
+  return sizes;
+}
+
+// Square / grid block of up to 4 rows.
+function gridLayout(n: number, bw: number, bh: number, tubeW: number, tubeH: number, seed: () => number): Position[] {
+  const sizes = rowSizes(n, 4);
+  const rows = sizes.length;
+  const maxRow = Math.max(...sizes);
+  const cellW = Math.min(tubeW + 26, Math.floor((bw - 12) / maxRow));
+  const cellH = Math.min(tubeH + 34, Math.floor((bh - 12) / rows));
+  const startY = (bh - rows * cellH) / 2 + (cellH - tubeH) / 2;
+
+  const out: Position[] = [];
+  for (let r = 0; r < rows; r++) {
+    const inRow = sizes[r];
+    const startX = (bw - inRow * cellW) / 2 + (cellW - tubeW) / 2;
+    for (let c = 0; c < inRow; c++) {
+      out.push({
+        x: startX + c * cellW + (seed() - 0.5) * 8,
+        y: startY + r * cellH + (seed() - 0.5) * 6,
+      });
+    }
+  }
+  return out;
+}
+
+// Pyramid / triangle: narrow at the top, widest at the bottom.
+function pyramidLayout(n: number, bw: number, bh: number, tubeW: number, tubeH: number, seed: () => number): Position[] {
+  let rows = Math.ceil((-1 + Math.sqrt(1 + 8 * n)) / 2);
+  const sizes: number[] = [];
+  let left = n;
+  for (let r = 0; r < rows; r++) {
+    const want = r + 1;
+    const take = Math.min(want, left - (rows - 1 - r));
+    sizes.push(Math.max(1, take));
+    left -= sizes[r];
+  }
+  // Distribute any leftover onto the bottom rows.
+  let i = sizes.length - 1;
+  while (left > 0) { sizes[i]++; left--; i = i > 0 ? i - 1 : sizes.length - 1; }
+  rows = sizes.length;
+
+  const maxRow = Math.max(...sizes);
+  const cellW = Math.min(tubeW + 22, Math.floor((bw - 12) / maxRow));
+  const cellH = Math.min(tubeH + 24, Math.floor((bh - 12) / rows));
+  const startY = (bh - rows * cellH) / 2 + (cellH - tubeH) / 2;
+
+  const out: Position[] = [];
+  for (let r = 0; r < rows; r++) {
+    const inRow = sizes[r];
+    const startX = (bw - inRow * cellW) / 2 + (cellW - tubeW) / 2;
+    for (let c = 0; c < inRow; c++) {
+      out.push({
+        x: startX + c * cellW + (seed() - 0.5) * 6,
+        y: startY + r * cellH,
+      });
+    }
+  }
+  return out;
+}
+
+// Concentric circles: a center tube ringed by one or two circles.
+function ringLayout(n: number, bw: number, bh: number, tubeW: number, tubeH: number, seed: () => number): Position[] {
+  const cx = bw / 2;
+  const cy = bh / 2;
+  const outerR = Math.min((bw - tubeW - 16) / 2, (bh - tubeH - 16) / 2);
+
+  // Decide ring membership: small boards => single ring, larger => center + rings.
+  const rings: number[] = [];
+  if (n <= 6) {
+    rings.push(n);
+  } else if (n <= 10) {
+    rings.push(1, n - 1);
+  } else {
+    const inner = Math.round((n - 1) / 2.4);
+    rings.push(1, inner, n - 1 - inner);
+  }
+
+  const radii = rings.map((_, idx) =>
+    rings.length === 1 ? outerR * 0.78 : (idx === 0 ? 0 : outerR * (idx / (rings.length - 1)))
+  );
+
+  const out: Position[] = [];
+  rings.forEach((cnt, ri) => {
+    const R = radii[ri];
+    const a0 = seed() * Math.PI * 2 + ri * 0.6;
+    for (let k = 0; k < cnt; k++) {
+      const a = cnt === 1 && R === 0 ? 0 : a0 + (k / cnt) * Math.PI * 2;
+      out.push({
+        x: cx + R * Math.cos(a) - tubeW / 2,
+        y: cy + R * Math.sin(a) - tubeH / 2,
+      });
+    }
+  });
+  return out;
+}
+
 export function computeLayout(
   n: number,
   bw: number,
@@ -17,29 +128,13 @@ export function computeLayout(
   tubeW: number,
   tubeH: number
 ): Position[] {
-  const cellW = tubeW + 34;
-  const cols = Math.max(3, Math.min(n, Math.floor((bw - 24) / cellW)));
-  const rows = Math.ceil(n / cols);
-  let cellH = tubeH + 42;
-  if (rows * cellH > bh - 16) cellH = Math.max(tubeH + 16, Math.floor((bh - 16) / rows));
-  const jit = Math.min(11, Math.floor((cellH - tubeH) / 2) - 1);
-
-  const positions: Position[] = [];
-  const startY = (bh - rows * cellH) / 2 + 6;
-  let idx = 0;
-  for (let r = 0; r < rows; r++) {
-    const inRow = Math.min(cols, n - r * cols);
-    const stag = (r % 2) ? cellW * 0.32 : 0;
-    const startX = (bw - inRow * cellW) / 2 + (cellW - tubeW) / 2 - stag / 2;
-    for (let c = 0; c < inRow; c++) {
-      const rng = mulberry32(level * 7919 + idx * 101 + 13);
-      const zig = (c % 2) ? jit * 0.8 : -jit * 0.5;
-      positions.push({
-        x: Math.round(startX + c * cellW + stag + (rng() - 0.5) * 18),
-        y: Math.round(startY + r * cellH + (cellH - tubeH) / 2 + zig + (rng() - 0.5) * jit * 1.6)
-      });
-      idx++;
-    }
-  }
-  return positions;
+  if (n <= 0) return [];
+  const seed = mulberry32(level * 7919 + 13);
+  // Vary the arrangement style with each level for variety.
+  const style = level % 3;
+  let positions: Position[];
+  if (style === 1) positions = pyramidLayout(n, bw, bh, tubeW, tubeH, seed);
+  else if (style === 2) positions = ringLayout(n, bw, bh, tubeW, tubeH, seed);
+  else positions = gridLayout(n, bw, bh, tubeW, tubeH, seed);
+  return clampPositions(positions, bw, bh, tubeW, tubeH);
 }

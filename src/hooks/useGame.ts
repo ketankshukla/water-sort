@@ -70,7 +70,7 @@ export function useGame() {
     if (!board) return;
     const { tw, th } = getDims();
     const bw = board.clientWidth || 360;
-    const bh = Math.max(board.clientHeight, 340);
+    const bh = Math.max(board.clientHeight, 480);
     const s = stateRef.current;
     const positions = computeLayout(s.tubes.length, bw, bh, s.level, tw, th);
     setState(prev => ({ ...prev, positions, boardSize: { w: bw, h: bh } }));
@@ -111,7 +111,7 @@ export function useGame() {
     const board = boardRef.current;
     const { tw, th } = getDims();
     const bw = board?.clientWidth || 360;
-    const bh = Math.max(board?.clientHeight || 340, 340);
+    const bh = Math.max(board?.clientHeight || 480, 480);
     const positions = computeLayout(tubes.length, bw, bh, lv, tw, th);
     animatingRef.current.clear();
     setState(prev => ({
@@ -269,33 +269,61 @@ export function useGame() {
         }
       }
 
-      // Grow the destination block(s) from the bottom up, in sync with the drain,
-      // so the level square visibly forms as the liquid pours in.
-      for (let k = 0; k < count; k++) {
-        const bandIndex = existing + k;
-        const bandTop = containerBottom - (bandIndex + 1) * segH;
-        const fill = document.createElement("div");
-        fill.style.position = "absolute";
-        fill.style.left = innerLeft + "px";
-        fill.style.width = innerWidth + "px";
-        fill.style.top = bandTop + "px";
-        fill.style.height = segH + "px";
-        fill.style.background = PAL[color];
-        fill.style.transformOrigin = "bottom";
-        fill.style.transform = "scaleY(0)";
-        fill.style.zIndex = "38";
-        fill.style.pointerEvents = "none";
-        if (bandIndex === 0) {
-          fill.style.borderBottomLeftRadius = "9px";
-          fill.style.borderBottomRightRadius = "9px";
-        }
-        board.appendChild(fill);
-        fillEls.push(fill);
-        setTimeout(() => {
-          fill.style.transition = "transform .16s ease-out";
-          fill.style.transform = "scaleY(1)";
-        }, 60 + k * 110);
+      // Realistic rising liquid: a single column of the poured color grows from
+      // the current surface up to its new level, topped by a moving wavy surface.
+      const liquidColor = PAL[color];
+      const waveSvg =
+        "data:image/svg+xml," +
+        encodeURIComponent(
+          `<svg xmlns='http://www.w3.org/2000/svg' width='36' height='12' viewBox='0 0 36 12'><path d='M0 7 Q9 1 18 7 T36 7 V12 H0 Z' fill='${liquidColor}'/></svg>`
+        );
+      const boardH = br.height;
+      const bodyBottomY = containerBottom - existing * segH; // top of existing liquid
+      const riseH = count * segH;
+
+      const column = document.createElement("div");
+      column.style.position = "absolute";
+      column.style.left = innerLeft + "px";
+      column.style.width = innerWidth + "px";
+      column.style.bottom = (boardH - bodyBottomY) + "px";
+      column.style.height = "0px";
+      column.style.background = liquidColor;
+      column.style.zIndex = "38";
+      column.style.pointerEvents = "none";
+      column.style.transformOrigin = "bottom";
+      if (existing === 0) {
+        column.style.borderBottomLeftRadius = "9px";
+        column.style.borderBottomRightRadius = "9px";
       }
+
+      const wave = document.createElement("div");
+      wave.style.position = "absolute";
+      wave.style.left = "0";
+      wave.style.right = "0";
+      wave.style.top = "-7px";
+      wave.style.height = "9px";
+      wave.style.pointerEvents = "none";
+      wave.style.backgroundImage = `url("${waveSvg}")`;
+      wave.style.backgroundRepeat = "repeat-x";
+      wave.style.backgroundSize = "36px 9px";
+      wave.style.animation = "liquidwave .55s linear infinite";
+      column.appendChild(wave);
+
+      board.appendChild(column);
+      fillEls.push(column);
+
+      requestAnimationFrame(() => {
+        column.style.transition = `height ${(holdMs / 1000).toFixed(2)}s cubic-bezier(.45,.05,.4,1)`;
+        column.style.height = riseH + "px";
+      });
+
+      // Calm the surface and give a fluid wobble once the level finishes rising.
+      setTimeout(() => {
+        wave.style.transition = "opacity .25s ease, height .25s ease";
+        wave.style.height = "3px";
+        wave.style.opacity = "0.55";
+        column.style.animation = "liquidsettle .42s ease-out";
+      }, holdMs);
 
       setTimeout(() => {
         stream.style.height = "0px";
@@ -388,7 +416,7 @@ export function useGame() {
       const board = boardRef.current;
       const { tw, th } = getDims();
       const bw = board?.clientWidth || prev.boardSize.w;
-      const bh = Math.max(board?.clientHeight || prev.boardSize.h, 340);
+      const bh = Math.max(board?.clientHeight || prev.boardSize.h, 480);
       const positions = computeLayout(nt.length, bw, bh, prev.level, tw, th);
       return { ...prev, tubes: nt, addUses: prev.addUses - 1, positions, boardSize: { w: bw, h: bh } };
     });
