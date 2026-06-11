@@ -23,6 +23,44 @@ function blip(freq: number, dur: number, type: OscillatorType = "sine", vol = 0.
 export function clink() { blip(660, 0.09, "triangle", 0.14); }
 export function blockedSound() { blip(150, 0.14, "square", 0.07); }
 
+export function corkPop() {
+  try {
+    const a = ac();
+    const t0 = a.currentTime;
+
+    // The "pop": a fast downward pitch blip for that hollow champagne thunk.
+    const o = a.createOscillator();
+    const g = a.createGain();
+    o.type = "sine";
+    o.frequency.setValueAtTime(950, t0);
+    o.frequency.exponentialRampToValueAtTime(170, t0 + 0.07);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.28, t0 + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.13);
+    o.connect(g).connect(a.destination);
+    o.start(t0);
+    o.stop(t0 + 0.15);
+
+    // The "fizz": a short high-passed noise burst right after the pop.
+    const dur = 0.28;
+    const buf = a.createBuffer(1, Math.ceil(a.sampleRate * dur), a.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const src = a.createBufferSource();
+    src.buffer = buf;
+    const hp = a.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 2600;
+    const ng = a.createGain();
+    ng.gain.setValueAtTime(0.0001, t0 + 0.04);
+    ng.gain.exponentialRampToValueAtTime(0.05, t0 + 0.075);
+    ng.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.04 + dur);
+    src.connect(hp).connect(ng).connect(a.destination);
+    src.start(t0 + 0.04);
+    src.stop(t0 + 0.04 + dur);
+  } catch (e) {}
+}
+
 export function winJingle() {
   [523, 659, 784, 1047].forEach((f, i) =>
     setTimeout(() => blip(f, 0.22, "triangle", 0.14), i * 120)

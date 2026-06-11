@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { CAP, PAL, Tube, Move, topColor, topRun, isComplete, canPour, isWon, solve, generateLevel } from "@/lib/game";
-import { clink, blockedSound, winJingle, pourSound } from "@/lib/audio";
+import { clink, blockedSound, winJingle, pourSound, corkPop } from "@/lib/audio";
 import { computeLayout, Position } from "@/lib/layout";
 
 export interface GameState {
@@ -124,22 +124,24 @@ export function useGame() {
   }, []);
 
   const commitPour = useCallback((from: number, to: number, color: number, count: number) => {
-    setState(prev => {
-      const nt = prev.tubes.map(t => t.slice());
-      for (let k = 0; k < count; k++) nt[from].pop();
-      for (let k = 0; k < count; k++) nt[to].push(color);
-      const won = isWon(nt);
-      if (won) setTimeout(() => onWin(), 450);
-      return {
-        ...prev,
-        tubes: nt,
-        history: [...prev.history, { from, to, count, color }],
-        moves: prev.moves + 1,
-        selected: -1,
-        busy: false,
-        won,
-      };
-    });
+    // Pours are serial (busy lock), so stateRef holds the current board.
+    const nt = stateRef.current.tubes.map(t => t.slice());
+    for (let k = 0; k < count; k++) nt[from].pop();
+    for (let k = 0; k < count; k++) nt[to].push(color);
+    const won = isWon(nt);
+
+    if (isComplete(nt[to]) && stateRef.current.sound) corkPop();
+    if (won) setTimeout(() => onWin(), 450);
+
+    setState(prev => ({
+      ...prev,
+      tubes: nt,
+      history: [...prev.history, { from, to, count, color }],
+      moves: prev.moves + 1,
+      selected: -1,
+      busy: false,
+      won,
+    }));
   }, [onWin]);
 
   const doPour = useCallback((from: number, to: number) => {
@@ -202,10 +204,13 @@ export function useGame() {
       // Sound starts exactly when the liquid begins to pour.
       if (stateRef.current.sound) pourSound(holdMs + 200);
 
+      // Inset = tube border (2px) + segs container inset (3px) = 5px, so overlay
+      // blocks match the real segment width/position exactly.
+      const INSET = 5;
       const br = board.getBoundingClientRect();
-      const innerLeft = dr.left - br.left + 3;
-      const innerWidth = dr.width - 6;
-      const containerBottom = dr.bottom - br.top - 3;
+      const innerLeft = dr.left - br.left + INSET;
+      const innerWidth = dr.width - INSET * 2;
+      const containerBottom = dr.bottom - br.top - INSET;
       const streamX = dr.left - br.left + dr.width / 2 - 2;
       const surfaceY = containerBottom - existing * segH;
 
