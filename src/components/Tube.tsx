@@ -127,14 +127,14 @@ export default function Tube({
         </div>
       )}
 
-      {/* One-way: a downward valve chevron badge (pour out only). */}
+      {/* One-way: an upward valve chevron badge — liquid only leaves (out, never in). */}
       {oneway && (
         <div
           className="pointer-events-none absolute -top-[12px] left-1/2 -translate-x-1/2 z-[4] flex h-[18px] w-[18px] items-center justify-center rounded-full text-[11px] font-bold text-white"
           style={{ background: "#1f2a4d", border: "1px solid #6f7fb5" }}
           title="One-way: pours out only"
           aria-hidden="true"
-        >↓</div>
+        >↑</div>
       )}
 
       {/* Locked: padlock badge with a live countdown of moves until it opens. */}
