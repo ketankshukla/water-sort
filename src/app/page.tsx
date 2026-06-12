@@ -32,6 +32,8 @@ export default function Home() {
       />
       <GameBoard
         tubes={state.tubes}
+        mods={state.mods}
+        moves={state.moves}
         positions={state.positions}
         selected={state.selected}
         hinted={state.hinted}

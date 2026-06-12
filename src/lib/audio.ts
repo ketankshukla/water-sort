@@ -61,6 +61,35 @@ export function corkPop() {
   } catch (e) {}
 }
 
+export function iceCrack() {
+  try {
+    const a = ac();
+    const t0 = a.currentTime;
+    // A short crackle: a few quick high noise bursts for the shattering ice.
+    for (let i = 0; i < 4; i++) {
+      const bt = t0 + i * 0.035;
+      const dur = 0.05;
+      const buf = a.createBuffer(1, Math.ceil(a.sampleRate * dur), a.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let k = 0; k < d.length; k++) d[k] = Math.random() * 2 - 1;
+      const src = a.createBufferSource();
+      src.buffer = buf;
+      const hp = a.createBiquadFilter();
+      hp.type = "highpass";
+      hp.frequency.value = 4000 + Math.random() * 2000;
+      const g = a.createGain();
+      g.gain.setValueAtTime(0.0001, bt);
+      g.gain.exponentialRampToValueAtTime(0.06 + Math.random() * 0.03, bt + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, bt + dur);
+      src.connect(hp).connect(g).connect(a.destination);
+      src.start(bt);
+      src.stop(bt + dur);
+    }
+    // A faint glassy "ting" to finish.
+    blip(2100, 0.12, "triangle", 0.05);
+  } catch (e) {}
+}
+
 export function winJingle() {
   [523, 659, 784, 1047].forEach((f, i) =>
     setTimeout(() => blip(f, 0.22, "triangle", 0.14), i * 120)

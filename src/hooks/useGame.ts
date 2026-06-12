@@ -1,11 +1,12 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { CAP, PAL, Tube, Move, topColor, topRun, isComplete, canPour, isWon, solve, generateLevel } from "@/lib/game";
-import { clink, blockedSound, winJingle, pourSound, corkPop } from "@/lib/audio";
+import { CAP, PAL, Tube, Move, Mods, canSource, topColor, topRun, isComplete, canPour, isWon, solve, generateLevel } from "@/lib/game";
+import { clink, blockedSound, winJingle, pourSound, corkPop, iceCrack } from "@/lib/audio";
 import { computeLayout, Position } from "@/lib/layout";
 
 export interface GameState {
   level: number;
   tubes: Tube[];
+  mods: Mods;
   moves: number;
   history: Move[];
   addUses: number;
@@ -46,6 +47,7 @@ export function useGame() {
   const [state, setState] = useState<GameState>(() => ({
     level: 1,
     tubes: [],
+    mods: [],
     moves: 0,
     history: [],
     addUses: 1,
@@ -106,6 +108,9 @@ export function useGame() {
         resumed = {
           level: saved.level ?? 1,
           tubes: saved.tubes as Tube[],
+          mods: Array.isArray(saved.mods) && saved.mods.length === saved.tubes.length
+            ? (saved.mods as Mods)
+            : (saved.tubes as Tube[]).map(() => null),
           moves: saved.moves ?? 0,
           history: Array.isArray(saved.history) ? saved.history : [],
           addUses: saved.addUses ?? 1,
@@ -121,8 +126,8 @@ export function useGame() {
       setState(prev => ({ ...prev, ...resumed, sound: snd, score, mounted: true }));
     } else {
       const lvl = parseInt(localStorage.getItem("ws_level") || "1", 10);
-      const { tubes, optimal } = generateLevel(lvl);
-      setState(prev => ({ ...prev, level: lvl, sound: snd, score, tubes, optimal, mounted: true }));
+      const { tubes, optimal, mods } = generateLevel(lvl);
+      setState(prev => ({ ...prev, level: lvl, sound: snd, score, tubes, mods, optimal, mounted: true }));
     }
   }, []);
 
@@ -132,6 +137,7 @@ export function useGame() {
     const save = {
       level: state.level,
       tubes: state.tubes,
+      mods: state.mods,
       moves: state.moves,
       history: state.history,
       addUses: state.addUses,
@@ -139,7 +145,7 @@ export function useGame() {
       won: state.won,
     };
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch { /* storage full / disabled */ }
-  }, [state.mounted, state.tubes, state.moves, state.history, state.addUses, state.optimal, state.won, state.level]);
+  }, [state.mounted, state.tubes, state.mods, state.moves, state.history, state.addUses, state.optimal, state.won, state.level]);
 
   useEffect(() => {
     recalcLayout();
@@ -170,7 +176,7 @@ export function useGame() {
   }, [state.tubes, state.won, state.mounted, state.moves, state.optimal, state.level]);
 
   const buildLevel = useCallback((lv: number) => {
-    const { tubes, optimal } = generateLevel(lv);
+    const { tubes, optimal, mods } = generateLevel(lv);
     const board = boardRef.current;
     const { tw, th } = getDims();
     const bw = board?.clientWidth || 360;
@@ -181,6 +187,7 @@ export function useGame() {
       ...prev,
       level: lv,
       tubes,
+      mods,
       optimal,
       moves: 0,
       history: [],
@@ -195,15 +202,25 @@ export function useGame() {
   }, []);
 
   const commitPour = useCallback((from: number, to: number, color: number, count: number) => {
+    // The pour locks both tubes (disjoint with any concurrent pour), so the
+    // destination's modifier is stable here: detect a frozen-thaw up front.
+    const mTo = stateRef.current.mods[to];
+    const willThaw = !!(mTo && mTo.kind === "frozen" && !mTo.thawed);
+    if (willThaw && stateRef.current.sound) iceCrack();
+
     // Apply this pour's delta inside the updater so concurrent pours compose
     // correctly on top of each other (win is detected by an effect on tubes).
     setState(prev => {
       const nt = prev.tubes.map(t => t.slice());
       for (let k = 0; k < count; k++) nt[from].pop();
       for (let k = 0; k < count; k++) nt[to].push(color);
+      const nm = willThaw
+        ? prev.mods.map((m, i) => (i === to && m ? { ...m, thawed: true } : m))
+        : prev.mods;
       return {
         ...prev,
         tubes: nt,
+        mods: nm,
         history: [...prev.history, { from, to, count, color }],
         moves: prev.moves + 1,
       };
@@ -426,13 +443,18 @@ export function useGame() {
     if (animatingRef.current.has(i)) return; // this tube is mid-pour
     if (s.selected === -1) {
       if (!s.tubes[i].length || isComplete(s.tubes[i])) return;
+      // A frozen/locked tube can't be a source until it opens up.
+      if (!canSource(s.mods[i], s.moves)) {
+        if (s.sound) blockedSound();
+        return;
+      }
       if (s.sound) clink();
       setState(prev => ({ ...prev, selected: i }));
     } else if (s.selected === i) {
       setState(prev => ({ ...prev, selected: -1 }));
     } else {
       const from = s.selected;
-      if (animatingRef.current.has(from) || !canPour(s.tubes, from, i)) {
+      if (animatingRef.current.has(from) || !canPour(s.tubes, from, i, s.mods, s.moves)) {
         if (s.sound) blockedSound();
         setState(prev => ({ ...prev, selected: -1 }));
         return;
@@ -466,12 +488,13 @@ export function useGame() {
     if (s.sound) clink();
     setState(prev => {
       const nt = [...prev.tubes, [] as number[]];
+      const nm = [...prev.mods, null];
       const board = boardRef.current;
       const { tw, th } = getDims();
       const bw = board?.clientWidth || prev.boardSize.w;
       const bh = Math.max(board?.clientHeight || prev.boardSize.h, 600);
       const positions = computeLayout(nt.length, bw, bh, prev.level, tw, th);
-      return { ...prev, tubes: nt, addUses: prev.addUses - 1, positions, boardSize: { w: bw, h: bh } };
+      return { ...prev, tubes: nt, mods: nm, addUses: prev.addUses - 1, positions, boardSize: { w: bw, h: bh } };
     });
   }, []);
 
@@ -484,7 +507,7 @@ export function useGame() {
   const hint = useCallback(() => {
     const s = stateRef.current;
     if (animatingRef.current.size > 0) return;
-    const sol = solve(s.tubes);
+    const sol = solve(s.tubes, 300000, s.mods);
     if (!sol || !sol.length) {
       if (s.sound) blockedSound();
       return;

@@ -1,11 +1,13 @@
 "use client";
 
-import { Tube as TubeType } from "@/lib/game";
+import { Tube as TubeType, Mods } from "@/lib/game";
 import { Position } from "@/lib/layout";
 import Tube from "./Tube";
 
 interface GameBoardProps {
   tubes: TubeType[];
+  mods: Mods;
+  moves: number;
   positions: Position[];
   selected: number;
   hinted: number[];
@@ -16,7 +18,7 @@ interface GameBoardProps {
 }
 
 export default function GameBoard({
-  tubes, positions, selected, hinted, onTubeClick, boardRef, registerTube, registerSegs,
+  tubes, mods, moves, positions, selected, hinted, onTubeClick, boardRef, registerTube, registerSegs,
 }: GameBoardProps) {
   return (
     <div
@@ -33,6 +35,8 @@ export default function GameBoard({
           y={positions[i]?.y ?? 10}
           selected={i === selected}
           hinted={hinted.includes(i)}
+          mod={mods[i]}
+          moves={moves}
           onClick={() => onTubeClick(i)}
           registerTube={registerTube}
           registerSegs={registerSegs}

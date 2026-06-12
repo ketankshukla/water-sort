@@ -65,7 +65,7 @@ Introduce **special tubes** that change the rules of a single tube on an otherwi
 - **Generator:** `generateLevel` optionally assigns a modifier (frequency scaling with level) and re-verifies solvability via the upgraded solver.
 - **Rendering:** `Tube.tsx` overlays — frost + crack (frozen), padlock + live counter (locked), valve chevron (one-way).
 
-*Future work — not built yet.*
+*✅ Implemented — frozen appears from L3, one-way from L5, locked from L7 (one special tube per board, solver-verified).*
 
 </details>
 
