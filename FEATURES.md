@@ -31,7 +31,43 @@ Add a **redo** button beside undo, and an "are you stuck?" auto-suggest after N 
 ### 3. 🔒 Locked & Frozen Tubes
 ![diff](https://img.shields.io/badge/difficulty-🟡%20Medium-f39c12) ![impact](https://img.shields.io/badge/impact-⭐⭐⭐-f1c40f)
 
-Introduce **special tubes**: frozen (must be thawed by pouring a matching color), locked (open after X moves), or one-way (pour out only). Adds real puzzle depth.
+Introduce **special tubes** that change the rules of a single tube on an otherwise normal board. They add genuine puzzle depth **without** adding new colors — the same liquid, but with constraints that force smarter planning. Three flavors:
+
+#### 3a. 🧊 Frozen Tubes
+- **Rule:** the tube is encased in ice and **rejects every pour** until it's thawed.
+- **Thaw trigger:** successfully pour a segment of a **matching top color** onto it once — the ice cracks and the tube behaves normally for the rest of the level.
+- **Feel:** you must solve toward a color *before* you can use that tube's space, so it gates your move order.
+- **Visual:** frosted/foggy glass with a crack-and-shatter animation on thaw.
+
+#### 3b. 🔒 Locked Tubes
+- **Rule:** sealed shut — **no pour in and no pour out** — until an unlock condition is met.
+- **Unlock conditions** (chosen per level): after **X total moves**, after **Y tubes completed**, or after a **specific color is fully cleared**.
+- **Feel:** a threshold gate that adds planning pressure and rewards reading the board ahead.
+- **Visual:** padlock badge with a **live counter**, plus a pop/unlatch animation when it opens.
+
+#### 3c. ➡️ One-Way Tubes
+- **Rule:** liquid can **only pour out**, never in — like a funnel or valve.
+- **Feel:** turns the tube into a pure **source**; since you can never refill it, emptying it at the right time becomes the puzzle. Pairs especially well with boards that have few empty tubes.
+- **Visual:** a downward chevron / valve marker on the tube body.
+
+> [!NOTE]
+> **Design guardrails:**
+> - Start with **at most ~1 special tube per board** when these first appear, then ramp frequency with level.
+> - The generator must still guarantee the board is solvable **with** the modifier active (verified by an upgraded solver).
+> - Modifiers are stored **separately** from the color data, so save/resume and scoring stay unaffected.
+
+<details>
+<summary><b>🛠️ How we'd build it</b></summary>
+
+- **Data model:** add a parallel `modifiers[]` (e.g. `{ kind: 'frozen' | 'locked' | 'oneway', ...params }` per tube index), kept separate from `Tube = number[]` so save/resume/scoring are unaffected.
+- **Rules:** extend `canPour` to consult modifiers — frozen blocks until its thawed flag is set, locked blocks in/out until its condition is met, one-way blocks pour-in.
+- **Solver:** `solve` must respect the same modifier gates so generated boards remain provably solvable.
+- **Generator:** `generateLevel` optionally assigns a modifier (frequency scaling with level) and re-verifies solvability via the upgraded solver.
+- **Rendering:** `Tube.tsx` overlays — frost + crack (frozen), padlock + live counter (locked), valve chevron (one-way).
+
+*Future work — not built yet.*
+
+</details>
 
 ### 4. 🌈 Rainbow / Wildcard Liquid
 ![diff](https://img.shields.io/badge/difficulty-🟡%20Medium-f39c12) ![impact](https://img.shields.io/badge/impact-⭐⭐⭐-f1c40f)
