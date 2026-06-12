@@ -212,46 +212,66 @@ export function generateLevel(lv: number): { tubes: Tube[]; optimal: number; mod
 // progressively so players meet one mechanic at a time.
 function modKindsForLevel(lv: number): ModKind[] {
   const kinds: ModKind[] = [];
-  if (lv >= 3) kinds.push("frozen");
-  if (lv >= 5) kinds.push("oneway");
-  if (lv >= 7) kinds.push("locked");
+  if (lv >= 2) kinds.push("frozen");
+  if (lv >= 4) kinds.push("oneway");
+  if (lv >= 6) kinds.push("locked");
   return kinds;
 }
 
-// Attempt to attach ONE modifier to the (already solvable) board. Tries a few
-// random kind/placement combos and accepts the first that stays solvable with
-// the modifier active. Returns null if no modifier should/can be added.
+// How many special tubes to aim for on a level. Escalates so the game keeps
+// feeling fresh as the player climbs.
+function targetModCount(lv: number): number {
+  if (lv < 2) return 0;
+  if (lv < 10) return 1;
+  if (lv < 18) return 2;
+  return 3;
+}
+
+// Greedily attach up to `targetModCount` modifiers to the (already solvable)
+// board, re-verifying solvability after each one so the board is always
+// completable with the modifiers active. Returns null only when no modifier
+// applies (early levels).
 function assignModifier(board: Tube[], lv: number): { tubes: Tube[]; optimal: number; mods: Mods } | null {
   const kinds = modKindsForLevel(lv);
-  if (!kinds.length) return null;
-  // ~65% of qualifying levels get a special tube.
-  if (Math.random() > 0.65) return null;
+  const target = targetModCount(lv);
+  if (!kinds.length || target <= 0) return null;
 
-  const liquidIdx = board
-    .map((t, i) => ({ t, i }))
-    .filter(({ t }) => t.length > 0 && !isComplete(t))
-    .map(({ i }) => i);
-  if (!liquidIdx.length) return null;
+  const mods: Mods = board.map(() => null);
+  let placed = 0;
+  let lastSol: Move[] | null = null;
 
-  for (let tries = 0; tries < 14; tries++) {
-    const kind = kinds[Math.floor(Math.random() * kinds.length)];
-    const mods: Mods = board.map(() => null);
+  for (let slot = 0; slot < target; slot++) {
+    let addedThisSlot = false;
+    for (let tries = 0; tries < 20 && !addedThisSlot; tries++) {
+      const kind = kinds[Math.floor(Math.random() * kinds.length)];
 
-    let idx: number;
-    if (kind === "locked") {
-      idx = Math.floor(Math.random() * board.length); // any tube, incl. empty
-    } else {
-      idx = liquidIdx[Math.floor(Math.random() * liquidIdx.length)]; // needs liquid
+      // Candidate tubes that don't already carry a modifier.
+      const free = board
+        .map((t, i) => ({ t, i }))
+        .filter(({ i }) => mods[i] == null);
+      const pool = kind === "locked"
+        ? free                                   // any tube, incl. empty
+        : free.filter(({ t }) => t.length > 0 && !isComplete(t)); // needs liquid
+      if (!pool.length) break;
+
+      const idx = pool[Math.floor(Math.random() * pool.length)].i;
+      const prev = mods[idx];
+      if (kind === "frozen") mods[idx] = { kind, thawed: false };
+      else if (kind === "oneway") mods[idx] = { kind };
+      else mods[idx] = { kind, unlockMoves: 2 + Math.floor(Math.random() * 4) };
+
+      const sol = solve(board.map(x => x.slice()), 300000, mods);
+      if (sol && sol.length >= 1) {
+        lastSol = sol;
+        placed++;
+        addedThisSlot = true;
+      } else {
+        mods[idx] = prev; // revert and try a different kind/placement
+      }
     }
-
-    if (kind === "frozen") mods[idx] = { kind, thawed: false };
-    else if (kind === "oneway") mods[idx] = { kind };
-    else mods[idx] = { kind, unlockMoves: 2 + Math.floor(Math.random() * 4) };
-
-    const sol = solve(board.map(x => x.slice()), 300000, mods);
-    if (sol && sol.length >= 1) {
-      return { tubes: board, optimal: sol.length, mods };
-    }
+    if (!addedThisSlot) break; // couldn't place more; keep what we have
   }
-  return null;
+
+  if (placed === 0 || !lastSol) return null;
+  return { tubes: board, optimal: lastSol.length, mods };
 }
