@@ -239,11 +239,16 @@ function assignModifier(board: Tube[], lv: number): { tubes: Tube[]; optimal: nu
   const mods: Mods = board.map(() => null);
   let placed = 0;
   let lastSol: Move[] | null = null;
+  const usedKinds = new Set<ModKind>();
 
   for (let slot = 0; slot < target; slot++) {
     let addedThisSlot = false;
     for (let tries = 0; tries < 20 && !addedThisSlot; tries++) {
-      const kind = kinds[Math.floor(Math.random() * kinds.length)];
+      // Prefer kinds not yet used on this board so multi-tube levels show a
+      // variety of specials; fall back to any kind once all have been used.
+      const fresh = kinds.filter(k => !usedKinds.has(k));
+      const choices = fresh.length ? fresh : kinds;
+      const kind = choices[Math.floor(Math.random() * choices.length)];
 
       // Candidate tubes that don't already carry a modifier.
       const free = board
@@ -264,6 +269,7 @@ function assignModifier(board: Tube[], lv: number): { tubes: Tube[]; optimal: nu
       if (sol && sol.length >= 1) {
         lastSol = sol;
         placed++;
+        usedKinds.add(kind);
         addedThisSlot = true;
       } else {
         mods[idx] = prev; // revert and try a different kind/placement
