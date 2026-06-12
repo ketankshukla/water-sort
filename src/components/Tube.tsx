@@ -28,11 +28,14 @@ export default function Tube({
   const glow = top >= 0 ? `0 0 14px ${PAL[top]}55` : undefined;
   const done = isComplete(tube);
 
-  // Active special-tube states drive the overlays below.
-  const frozen = !!mod && mod.kind === "frozen" && !mod.thawed;
-  const locked = !!mod && mod.kind === "locked" && moves < (mod.unlockMoves ?? 0);
-  const oneway = !!mod && mod.kind === "oneway";
+  // Active special-tube states drive the overlays below. Dynamic events lift
+  // once their move-count expiry passes.
+  const expired = !!mod && mod.expiresAtMove != null && moves >= mod.expiresAtMove;
+  const frozen = !!mod && mod.kind === "frozen" && !mod.thawed && !expired;
+  const locked = !!mod && mod.kind === "locked" && moves < (mod.unlockMoves ?? 0) && !expired;
+  const oneway = !!mod && mod.kind === "oneway" && !expired;
   const lockRemaining = locked ? (mod!.unlockMoves ?? 0) - moves : 0;
+  const dynamic = !!mod && !!mod.dynamic && (frozen || locked || oneway);
 
   // Pointer-based tap so a tap still registers on mobile even with a little
   // finger movement (the browser otherwise cancels the click as a scroll).
@@ -67,7 +70,7 @@ export default function Tube({
         touchAction: "manipulation",
       }}
       className={`absolute cursor-pointer transition-transform duration-150 ease-out border-2 border-t-0 rounded-b-[14px] bg-white/[0.03] select-none
-        ${borderClass} ${hinted ? "animate-hintpulse !border-[#9fb0e8]" : ""}`}
+        ${borderClass} ${hinted ? "animate-hintpulse !border-[#9fb0e8]" : ""} ${dynamic ? "animate-eventflash" : ""}`}
     >
       {/* Invisible enlarged hit area so a fingertip can tap near the thin tube.
           Buffer sizes are kept in sync with the layout spacing in layout.ts so

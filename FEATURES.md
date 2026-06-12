@@ -50,10 +50,18 @@ Introduce **special tubes** that change the rules of a single tube on an otherwi
 - **Feel:** turns the tube into a pure **source** you must drain to "unlock" as usable empty space, so timing its emptying becomes the puzzle. Pairs especially well with boards that have few empty tubes.
 - **Visual:** an upward chevron / valve marker on the tube body; it disappears once the tube empties.
 
+#### 3d. ⚡ Dynamic Hazards (mid-play)
+- **Rule:** while you're solving, a random tube can **spontaneously** freeze, lock, or become one-way — the same three mechanics, but appearing *during* play instead of at the start.
+- **Always solvable, by design:**
+  - **Temporary** — every event auto-lifts after a few moves, so nothing permanent ever changes the puzzle's solvability.
+  - **Safe spawning** — an event only fires if you still have at least one legal move with it active.
+  - **Emergency lift** — if the board is ever stuck *because of* a dynamic event, all events instantly clear. A modifier can never be the reason you can't finish.
+- **Feel:** keeps you on your toes — you can't fully pre-plan, you adapt. The board pulses with a warning glow when a tube transforms.
+
 > [!NOTE]
 > **Design guardrails:**
-> - Start with **at most ~1 special tube per board** when these first appear, then ramp frequency with level.
-> - The generator must still guarantee the board is solvable **with** the modifier active (verified by an upgraded solver).
+> - Static special tubes: at most ~1 early on, ramping up with level; the generator guarantees the board is solvable **with** them active (verified by the solver).
+> - Dynamic hazards are **temporary + safe-spawned + emergency-lifted**, so they add tension without ever making a level impossible.
 > - Modifiers are stored **separately** from the color data, so save/resume and scoring stay unaffected.
 
 <details>

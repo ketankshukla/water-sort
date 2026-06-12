@@ -1,6 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { CAP, PAL, Tube, Move, Mods, canSource, topColor, topRun, isComplete, canPour, isWon, solve, generateLevel } from "@/lib/game";
-import { clink, blockedSound, winJingle, pourSound, corkPop, iceCrack } from "@/lib/audio";
+import {
+  CAP, PAL, Tube, Move, Mods, canSource, topColor, topRun, isComplete, canPour, isWon, solve, generateLevel,
+  hasLegalMove, pickDynamicEvent, DYN_EVENT_INTERVAL, DYN_EVENT_CHANCE,
+} from "@/lib/game";
+import { clink, blockedSound, winJingle, pourSound, corkPop, iceCrack, hazardSound } from "@/lib/audio";
 import { computeLayout, Position } from "@/lib/layout";
 
 export interface GameState {
@@ -174,6 +177,51 @@ export function useGame() {
       });
     }
   }, [state.tubes, state.won, state.mounted, state.moves, state.optimal, state.level]);
+
+  // Dynamic (mid-play) events: tubes can temporarily freeze / lock / become
+  // one-way as the player solves. Everything here is designed to keep the board
+  // always completable:
+  //   1. Expired events are swept away (they auto-lift after a few moves).
+  //   2. A new event only spawns if a legal move still remains afterward.
+  //   3. Emergency lift: if the board is stuck *because of* dynamic events, they
+  //      are cleared immediately so a modifier can never trap the player.
+  useEffect(() => {
+    if (!state.mounted || state.won || state.tubes.length === 0) return;
+    const moves = state.moves;
+
+    // Decide a spawn outside the state updater so the random choice is stable
+    // (avoids double-spawning under React StrictMode's double-invoke in dev).
+    let spawn: ReturnType<typeof pickDynamicEvent> = null;
+    if (moves > 0 && moves % DYN_EVENT_INTERVAL === 0 && Math.random() < DYN_EVENT_CHANCE) {
+      spawn = pickDynamicEvent(state.tubes, state.mods, moves, state.level);
+    }
+    if (spawn && stateRef.current.sound) hazardSound();
+
+    setState(prev => {
+      if (prev.moves !== moves) return prev; // a newer pour landed; let its effect handle it
+      let mods = prev.mods;
+      let changed = false;
+
+      const swept = mods.map(m =>
+        m && m.dynamic && m.expiresAtMove != null && prev.moves >= m.expiresAtMove ? null : m
+      );
+      if (swept.some((m, i) => m !== mods[i])) { mods = swept; changed = true; }
+
+      if (spawn && mods[spawn.index] == null) {
+        const nm = mods.slice();
+        nm[spawn.index] = spawn.mod;
+        mods = nm;
+        changed = true;
+      }
+
+      if (!hasLegalMove(prev.tubes, mods, prev.moves)) {
+        const stripped = mods.map(m => (m && m.dynamic ? null : m));
+        if (hasLegalMove(prev.tubes, stripped, prev.moves)) { mods = stripped; changed = true; }
+      }
+
+      return changed ? { ...prev, mods } : prev;
+    });
+  }, [state.moves, state.mounted, state.won, state.tubes.length, state.level]);
 
   const buildLevel = useCallback((lv: number) => {
     const { tubes, optimal, mods } = generateLevel(lv);
@@ -515,7 +563,7 @@ export function useGame() {
   const hint = useCallback(() => {
     const s = stateRef.current;
     if (animatingRef.current.size > 0) return;
-    const sol = solve(s.tubes, 300000, s.mods);
+    const sol = solve(s.tubes, 300000, s.mods, s.moves);
     if (!sol || !sol.length) {
       if (s.sound) blockedSound();
       return;

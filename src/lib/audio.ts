@@ -90,6 +90,26 @@ export function iceCrack() {
   } catch (e) {}
 }
 
+export function hazardSound() {
+  try {
+    const a = ac();
+    const t0 = a.currentTime;
+    // A short descending two-tone "alert" for a tube transforming mid-play.
+    const o = a.createOscillator();
+    const g = a.createGain();
+    o.type = "sawtooth";
+    o.frequency.setValueAtTime(520, t0);
+    o.frequency.exponentialRampToValueAtTime(300, t0 + 0.18);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.1, t0 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22);
+    o.connect(g).connect(a.destination);
+    o.start(t0);
+    o.stop(t0 + 0.24);
+    blip(700, 0.1, "triangle", 0.06);
+  } catch (e) {}
+}
+
 export function winJingle() {
   [523, 659, 784, 1047].forEach((f, i) =>
     setTimeout(() => blip(f, 0.22, "triangle", 0.14), i * 120)
