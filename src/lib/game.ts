@@ -5,8 +5,54 @@ export const PAL = [
 export const CAP = 4;
 export const EMPTY_TUBES = 2;
 
+// A rainbow / wildcard segment (FEATURES.md #4). It matches ANY color it
+// touches, both as a pour source and a pour destination. Stored as a normal
+// segment value so save/resume is unaffected.
+export const WILD = -2;
+
+// CSS background for a segment color id. Wildcards render as a rainbow.
+export const WILD_GRADIENT =
+  "linear-gradient(135deg,#FF3B3B 0%,#FF8A1F 16%,#FFD60A 32%,#8BE32C 48%,#22D3EE 64%,#3B82F6 80%,#A855F7 100%)";
+export function segBg(c: number): string {
+  return c === WILD ? WILD_GRADIENT : PAL[c];
+}
+
 export type Tube = number[];
 export type Move = { from: number; to: number; count: number; color: number };
+
+// Two segment colors are compatible if they're equal or either is a wildcard.
+export function colorEq(a: number, b: number): boolean {
+  return a === b || a === WILD || b === WILD;
+}
+
+// A tube is uniform if all of its non-wild segments share a single color
+// (wildcards count as that color). An all-wild or empty tube is uniform too.
+export function isUniform(t: Tube): boolean {
+  let c = -1;
+  for (const x of t) {
+    if (x === WILD) continue;
+    if (c === -1) c = x;
+    else if (x !== c) return false;
+  }
+  return true;
+}
+
+// The movable top group of a tube: leading wildcards adopt the first real color
+// beneath them, so e.g. [.., R, W, R] pours as a run of 3 of effective color R.
+// An all-wild top group has effective color WILD (matches anything).
+export function topGroup(t: Tube): { count: number; color: number } {
+  if (!t.length) return { count: 0, color: -1 };
+  let color = -1;
+  let count = 0;
+  for (let i = t.length - 1; i >= 0; i--) {
+    const seg = t[i];
+    if (seg === WILD) { count++; continue; }
+    if (color === -1) { color = seg; count++; continue; }
+    if (seg === color) { count++; continue; }
+    break;
+  }
+  return { count, color: color === -1 ? WILD : color };
+}
 
 // Special-tube modifiers (FEATURES.md #3). A modifier is attached to a tube
 // index via a parallel `Mods` array so the raw `Tube = number[]` color data
@@ -51,15 +97,11 @@ export function topColor(t: Tube): number {
 }
 
 export function topRun(t: Tube): number {
-  if (!t.length) return 0;
-  const c = topColor(t);
-  let n = 0;
-  for (let i = t.length - 1; i >= 0 && t[i] === c; i--) n++;
-  return n;
+  return topGroup(t).count;
 }
 
 export function isComplete(t: Tube): boolean {
-  return t.length === CAP && t.every(c => c === t[0]);
+  return t.length === CAP && isUniform(t);
 }
 
 export function canPour(tubes: Tube[], a: number, b: number, mods?: Mods, moves = 0): boolean {
@@ -68,7 +110,7 @@ export function canPour(tubes: Tube[], a: number, b: number, mods?: Mods, moves 
     if (!canSource(mods[a], moves)) return false;
     if (!canDest(mods[b], moves)) return false;
   }
-  return tubes[b].length === 0 || topColor(tubes[b]) === topColor(tubes[a]);
+  return tubes[b].length === 0 || colorEq(topColor(tubes[b]), topGroup(tubes[a]).color);
 }
 
 export function isWon(tubes: Tube[]): boolean {
@@ -111,7 +153,7 @@ export function solve(start: Tube[], maxNodes = 300000, mods?: Mods, baseMoves =
   };
 
   const solvedAll = (st: Tube[]) =>
-    st.every(t => !t.length || (t.length === CAP && t.every(c => c === t[0])));
+    st.every(t => !t.length || isComplete(t));
 
   function dfs(): boolean {
     if (nodes++ > maxNodes) return false;
@@ -123,7 +165,7 @@ export function solve(start: Tube[], maxNodes = 300000, mods?: Mods, baseMoves =
     for (let i = 0; i < s.length; i++) {
       const a = s[i];
       if (!a.length) continue;
-      if (a.length === CAP && a.every(c => c === a[0])) continue;
+      if (isComplete(a)) continue;
       if (mods) {
         const ma = mods[i];
         if (ma && !isExpired(ma, moves)) {
@@ -131,15 +173,15 @@ export function solve(start: Tube[], maxNodes = 300000, mods?: Mods, baseMoves =
           if (ma.kind === "locked" && moves < (ma.unlockMoves ?? 0)) continue;
         }
       }
-      const mono = a.every(c => c === a[0]);
-      const color = a[a.length - 1];
-      let run = 0;
-      for (let x = a.length - 1; x >= 0 && a[x] === color; x--) run++;
+      const mono = isUniform(a);
+      const grp = topGroup(a);
+      const color = grp.color;
+      const run = grp.count;
       for (let j = 0; j < s.length; j++) {
         if (i === j) continue;
         const b = s[j];
         if (b.length >= CAP) continue;
-        if (b.length && b[b.length - 1] !== color) continue;
+        if (b.length && !colorEq(b[b.length - 1], color)) continue;
         if (mono && !b.length) continue;
         if (mods) {
           const mb = mods[j];
@@ -151,7 +193,9 @@ export function solve(start: Tube[], maxNodes = 300000, mods?: Mods, baseMoves =
         const cnt = Math.min(run, CAP - b.length);
         // Pouring a matching color onto a still-frozen tube cracks the ice.
         const didThaw = !!(mods && mods[j]?.kind === "frozen" && !thawed[j] && !isExpired(mods[j], moves) && b.length > 0);
-        for (let x = 0; x < cnt; x++) { a.pop(); b.push(color); }
+        // Move the actual top `cnt` segments (preserving wild vs. real values).
+        const moved = a.splice(a.length - cnt, cnt);
+        for (const seg of moved) b.push(seg);
         // Draining a one-way tube to empty converts it to a normal tube.
         const diedOneway = !!(mods && mods[i]?.kind === "oneway" && !onewayDead[i] && a.length === 0);
         if (didThaw) thawed[j] = true;
@@ -161,7 +205,8 @@ export function solve(start: Tube[], maxNodes = 300000, mods?: Mods, baseMoves =
         path.pop();
         if (didThaw) thawed[j] = false;
         if (diedOneway) onewayDead[i] = false;
-        for (let x = 0; x < cnt; x++) { b.pop(); a.push(color); }
+        const back = b.splice(b.length - cnt, cnt);
+        for (const seg of back) a.push(seg);
       }
     }
     return false;
@@ -174,6 +219,40 @@ export function solve(start: Tube[], maxNodes = 300000, mods?: Mods, baseMoves =
 // L1-2: 4 colors, then +1 color every 2 levels, capped at the palette size.
 export function colorsForLevel(lv: number): number {
   return Math.min(4 + Math.floor((lv - 1) / 2), PAL.length);
+}
+
+// How many rainbow/wildcard segments a level gets. They appear from L8 and
+// ramp up gently so the "get out of jail" mechanic stays special.
+export function wildCountForLevel(lv: number): number {
+  if (lv < 8) return 0;
+  if (lv < 14) return 1;
+  if (lv < 20) return 2;
+  return 3;
+}
+
+// Convert up to `count` real segments into wildcards in place, keeping the board
+// solvable and never auto-completing a tube. Returns how many were placed.
+function injectWildcards(board: Tube[], count: number): number {
+  if (count <= 0) return 0;
+  let placed = 0;
+  for (let n = 0; n < count; n++) {
+    let done = false;
+    for (let tries = 0; tries < 20 && !done; tries++) {
+      const ti = Math.floor(Math.random() * board.length);
+      const tube = board[ti];
+      if (!tube.length) continue;
+      const si = Math.floor(Math.random() * tube.length);
+      if (tube[si] === WILD) continue;
+      const prev = tube[si];
+      tube[si] = WILD;
+      if (board.some(isComplete)) { tube[si] = prev; continue; }
+      const sol = solve(board.map(x => x.slice()), 60000);
+      if (sol && sol.length >= 1) { placed++; done = true; }
+      else { tube[si] = prev; }
+    }
+    if (!done) break;
+  }
+  return placed;
 }
 
 // Build a partially-filled, always-solvable board.
@@ -212,11 +291,13 @@ export function generateLevel(lv: number): { tubes: Tube[]; optimal: number; mod
     const board = t.concat(Array.from({ length: EMPTY_TUBES }, () => []));
     const sol = solve(board.map(x => x.slice()));
     if (sol && sol.length >= colors) {
-      // Try to spice the board with one special tube; fall back to plain if the
-      // modifier can't be placed solvably.
+      // Sprinkle in rainbow/wildcard segments (verified solvable), then try to
+      // add a special tube; fall back to plain if a modifier can't be placed.
+      injectWildcards(board, wildCountForLevel(lv));
       const withMod = assignModifier(board, lv);
       if (withMod) return withMod;
-      return { tubes: board, optimal: sol.length, mods: board.map(() => null) };
+      const sol2 = solve(board.map(x => x.slice()), 120000) ?? sol;
+      return { tubes: board, optimal: sol2.length, mods: board.map(() => null) };
     }
   }
 

@@ -82,6 +82,12 @@ Introduce **special tubes** that change the rules of a single tube on an otherwi
 
 A special segment that matches **any** color it touches — a satisfying "get out of jail" mechanic for hard boards.
 
+- **Rule:** a wildcard segment is compatible with any color, both as a pour **source** (it pours onto anything) and a **destination** (anything pours onto it). Leading wildcards adopt the real color beneath them, so they move as part of a run.
+- **Completion:** a tube counts as solved if all its non-wild segments share one color — the rainbow piece "fills in" for that color.
+- **Visual:** segments render as a **rainbow gradient** with a soft violet glow.
+
+*✅ Implemented — wildcards appear from L8 (1 piece), 2 from L14, 3 from L20; placement is solver-verified and the solver, hints, undo, and pour animation are all wildcard-aware.*
+
 ---
 
 ## ⏱️ Modes & Progression

@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import {
-  CAP, PAL, Tube, Move, Mods, canSource, topColor, topRun, isComplete, canPour, isWon, solve, generateLevel,
+  CAP, Tube, Move, Mods, canSource, isComplete, canPour, isWon, solve, generateLevel,
+  topGroup, isUniform, segBg, WILD,
   hasLegalMove, pickDynamicEvent, DYN_EVENT_INTERVAL, DYN_EVENT_CHANCE,
 } from "@/lib/game";
 import { clink, blockedSound, winJingle, pourSound, corkPop, iceCrack, hazardSound } from "@/lib/audio";
@@ -260,8 +261,9 @@ export function useGame() {
     // correctly on top of each other (win is detected by an effect on tubes).
     setState(prev => {
       const nt = prev.tubes.map(t => t.slice());
-      for (let k = 0; k < count; k++) nt[from].pop();
-      for (let k = 0; k < count; k++) nt[to].push(color);
+      // Move the actual top `count` segments, preserving wild vs. real values.
+      const moved = nt[from].splice(nt[from].length - count, count);
+      for (const seg of moved) nt[to].push(seg);
       // A drained one-way tube converts to a normal tube; a matching pour onto a
       // frozen tube thaws it.
       const drainedOneway = prev.mods[from]?.kind === "oneway" && nt[from].length === 0;
@@ -287,10 +289,12 @@ export function useGame() {
 
   const doPour = useCallback((from: number, to: number) => {
     const s = stateRef.current;
-    const color = topColor(s.tubes[from]);
-    const count = Math.min(topRun(s.tubes[from]), CAP - s.tubes[to].length);
+    const grp = topGroup(s.tubes[from]);
+    const color = grp.color;
+    const count = Math.min(grp.count, CAP - s.tubes[to].length);
     const existing = s.tubes[to].length;
-    const willComplete = existing + count === CAP && s.tubes[to].every(c => c === color);
+    const moved = s.tubes[from].slice(s.tubes[from].length - count);
+    const willComplete = existing + count === CAP && isUniform(s.tubes[to].concat(moved));
     animatingRef.current.add(from);
     animatingRef.current.add(to);
     setState(prev => ({ ...prev, selected: -1 }));
@@ -362,7 +366,7 @@ export function useGame() {
       stream.style.borderRadius = "2px";
       stream.style.pointerEvents = "none";
       stream.style.zIndex = "40";
-      stream.style.background = PAL[color];
+      stream.style.background = segBg(color);
       stream.style.left = streamX + "px";
       stream.style.top = streamTop + "px";
       stream.style.height = "0px";
@@ -380,7 +384,7 @@ export function useGame() {
         drop.style.borderRadius = "50%";
         drop.style.pointerEvents = "none";
         drop.style.zIndex = "39";
-        drop.style.background = PAL[color];
+        drop.style.background = segBg(color);
         drop.style.left = streamX + "px";
         drop.style.top = (dr.top - br.top + 3) + "px";
         drop.style.setProperty("--dxd", ((d - 1) * 9) + "px");
@@ -400,11 +404,13 @@ export function useGame() {
 
       // Realistic rising liquid: a single column of the poured color grows from
       // the current surface up to its new level, topped by a moving wavy surface.
-      const liquidColor = PAL[color];
+      const liquidColor = segBg(color);
+      // The SVG wave needs a solid fill, so wildcards use a representative hue.
+      const waveFill = color === WILD ? "#A855F7" : liquidColor;
       const waveSvg =
         "data:image/svg+xml," +
         encodeURIComponent(
-          `<svg xmlns='http://www.w3.org/2000/svg' width='36' height='12' viewBox='0 0 36 12'><path d='M0 7 Q9 1 18 7 T36 7 V12 H0 Z' fill='${liquidColor}'/></svg>`
+          `<svg xmlns='http://www.w3.org/2000/svg' width='36' height='12' viewBox='0 0 36 12'><path d='M0 7 Q9 1 18 7 T36 7 V12 H0 Z' fill='${waveFill}'/></svg>`
         );
       const boardH = br.height;
       const bodyBottomY = containerBottom - existing * segH; // top of existing liquid
@@ -526,8 +532,10 @@ export function useGame() {
     setState(prev => {
       const m = prev.history[prev.history.length - 1];
       const nt = prev.tubes.map(t => t.slice());
-      for (let k = 0; k < m.count; k++) nt[m.to].pop();
-      for (let k = 0; k < m.count; k++) nt[m.from].push(m.color);
+      // The top `count` segments of `to` are exactly what was poured, so move
+      // them back (preserves wild vs. real values).
+      const moved = nt[m.to].splice(nt[m.to].length - m.count, m.count);
+      for (const seg of moved) nt[m.from].push(seg);
       return {
         ...prev,
         tubes: nt,

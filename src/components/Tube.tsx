@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { PAL, CAP, Tube as TubeType, Modifier } from "@/lib/game";
+import { PAL, Tube as TubeType, Modifier, isComplete, segBg, WILD } from "@/lib/game";
 
 interface TubeProps {
   tube: TubeType;
@@ -17,15 +17,14 @@ interface TubeProps {
   registerSegs: (i: number, el: HTMLDivElement | null) => void;
 }
 
-function isComplete(t: TubeType) {
-  return t.length === CAP && t.every(c => c === t[0]);
-}
-
 export default function Tube({
   tube, index, x, y, selected, hinted, mod, moves, onClick, registerTube, registerSegs,
 }: TubeProps) {
   const top = tube.length ? tube[tube.length - 1] : -1;
-  const glow = top >= 0 ? `0 0 14px ${PAL[top]}55` : undefined;
+  const glow =
+    top === WILD ? "0 0 16px rgba(180,120,255,0.45)"
+    : top >= 0 ? `0 0 14px ${PAL[top]}55`
+    : undefined;
   const done = isComplete(tube);
 
   // Active special-tube states drive the overlays below. Dynamic events lift
@@ -88,7 +87,7 @@ export default function Tube({
             className="transition-all duration-200 ease-out"
             style={{
               height: "var(--segh)",
-              background: PAL[c],
+              background: segBg(c),
             }}
           />
         ))}
