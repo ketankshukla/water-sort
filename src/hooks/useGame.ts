@@ -578,7 +578,12 @@ export function useGame() {
     const s = stateRef.current;
     const newLevel = s.level + 1;
     localStorage.setItem("ws_level", String(newLevel));
-    buildLevel(newLevel);
+    // Dismiss the win overlay first (and clear the board so the win effect, which
+    // is guarded by tubes.length > 0, doesn't immediately re-fire on the still-
+    // solved board), then build the next level on a later frame so the browser can
+    // repaint immediately — level generation can be CPU-heavy.
+    setState(prev => ({ ...prev, won: false, tubes: [], selected: -1 }));
+    requestAnimationFrame(() => requestAnimationFrame(() => buildLevel(newLevel)));
   }, [buildLevel]);
 
   const restart = useCallback(() => {

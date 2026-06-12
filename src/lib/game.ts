@@ -262,10 +262,14 @@ function assignModifier(board: Tube[], lv: number): { tubes: Tube[]; optimal: nu
   let placed = 0;
   let lastSol: Move[] | null = null;
   const usedKinds = new Set<ModKind>();
+  // Verification solves here run many times during generation, so cap the search
+  // to keep level building responsive. A capped (null) result just means we skip
+  // that placement — the board stays solvable either way.
+  const VERIFY_NODES = 60000;
 
   for (let slot = 0; slot < target; slot++) {
     let addedThisSlot = false;
-    for (let tries = 0; tries < 20 && !addedThisSlot; tries++) {
+    for (let tries = 0; tries < 10 && !addedThisSlot; tries++) {
       // Prefer kinds not yet used on this board so multi-tube levels show a
       // variety of specials; fall back to any kind once all have been used.
       const fresh = kinds.filter(k => !usedKinds.has(k));
@@ -287,7 +291,7 @@ function assignModifier(board: Tube[], lv: number): { tubes: Tube[]; optimal: nu
       else if (kind === "oneway") mods[idx] = { kind };
       else mods[idx] = { kind, unlockMoves: 2 + Math.floor(Math.random() * 4) };
 
-      const sol = solve(board.map(x => x.slice()), 300000, mods);
+      const sol = solve(board.map(x => x.slice()), VERIFY_NODES, mods);
       if (sol && sol.length >= 1) {
         lastSol = sol;
         placed++;
