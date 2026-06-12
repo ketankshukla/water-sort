@@ -46,9 +46,9 @@ Introduce **special tubes** that change the rules of a single tube on an otherwi
 - **Visual:** padlock badge with a **live counter**, plus a pop/unlatch animation when it opens.
 
 #### 3c. ➡️ One-Way Tubes
-- **Rule:** liquid can **only pour out**, never in — like a funnel or valve.
-- **Feel:** turns the tube into a pure **source**; since you can never refill it, emptying it at the right time becomes the puzzle. Pairs especially well with boards that have few empty tubes.
-- **Visual:** a downward chevron / valve marker on the tube body.
+- **Rule:** liquid can **only pour out**, never in — like a funnel or valve. **Once fully emptied, the valve clears and it becomes a normal tube** you can pour into again.
+- **Feel:** turns the tube into a pure **source** you must drain to "unlock" as usable empty space, so timing its emptying becomes the puzzle. Pairs especially well with boards that have few empty tubes.
+- **Visual:** an upward chevron / valve marker on the tube body; it disappears once the tube empties.
 
 > [!NOTE]
 > **Design guardrails:**

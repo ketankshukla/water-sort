@@ -72,6 +72,9 @@ export function solve(start: Tube[], maxNodes = 300000, mods?: Mods): Move[] | n
   // Mutable thaw flags tracked through the search so frozen tubes can be used
   // as a source once a pour has cracked them open.
   const thawed = (mods ?? []).map(m => !!(m && m.kind === "frozen" && m.thawed));
+  // A one-way tube becomes a normal tube once it has been fully emptied, so it
+  // can then accept pours like any other empty tube.
+  const onewayDead = (mods ?? []).map(() => false);
   const visited = new Set<string>();
   const path: Move[] = [];
   let nodes = 0;
@@ -126,7 +129,7 @@ export function solve(start: Tube[], maxNodes = 300000, mods?: Mods): Move[] | n
         if (mods) {
           const mb = mods[j];
           if (mb) {
-            if (mb.kind === "oneway") continue;        // never accepts
+            if (mb.kind === "oneway" && !onewayDead[j]) continue; // accepts only once emptied
             if (mb.kind === "locked" && moves < (mb.unlockMoves ?? 0)) continue;
           }
         }
@@ -134,11 +137,15 @@ export function solve(start: Tube[], maxNodes = 300000, mods?: Mods): Move[] | n
         // Pouring a matching color onto a still-frozen tube cracks the ice.
         const didThaw = !!(mods && mods[j]?.kind === "frozen" && !thawed[j] && b.length > 0);
         for (let x = 0; x < cnt; x++) { a.pop(); b.push(color); }
+        // Draining a one-way tube to empty converts it to a normal tube.
+        const diedOneway = !!(mods && mods[i]?.kind === "oneway" && !onewayDead[i] && a.length === 0);
         if (didThaw) thawed[j] = true;
+        if (diedOneway) onewayDead[i] = true;
         path.push({ from: i, to: j, count: cnt, color });
         if (dfs()) return true;
         path.pop();
         if (didThaw) thawed[j] = false;
+        if (diedOneway) onewayDead[i] = false;
         for (let x = 0; x < cnt; x++) { b.pop(); a.push(color); }
       }
     }

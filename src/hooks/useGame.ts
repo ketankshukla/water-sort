@@ -214,9 +214,17 @@ export function useGame() {
       const nt = prev.tubes.map(t => t.slice());
       for (let k = 0; k < count; k++) nt[from].pop();
       for (let k = 0; k < count; k++) nt[to].push(color);
-      const nm = willThaw
-        ? prev.mods.map((m, i) => (i === to && m ? { ...m, thawed: true } : m))
-        : prev.mods;
+      // A drained one-way tube converts to a normal tube; a matching pour onto a
+      // frozen tube thaws it.
+      const drainedOneway = prev.mods[from]?.kind === "oneway" && nt[from].length === 0;
+      let nm = prev.mods;
+      if (willThaw || drainedOneway) {
+        nm = prev.mods.map((m, i) => {
+          if (i === to && m && m.kind === "frozen") return { ...m, thawed: true };
+          if (i === from && drainedOneway) return null;
+          return m;
+        });
+      }
       return {
         ...prev,
         tubes: nt,
