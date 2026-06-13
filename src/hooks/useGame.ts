@@ -1,8 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import {
-  CAP, Tube, Move, Mods, canSource, isComplete, canPour, isWon, solve, generateLevel,
+  Tube, Move, Mods, canSource, isComplete, canPour, isWon, solve, generateLevel,
   topGroup, isUniform, segBg, WILD,
   hasLegalMove, pickDynamicEvent, DYN_EVENT_INTERVAL, DYN_EVENT_CHANCE,
+  Difficulty, DIFFICULTY_SETTINGS, DEFAULT_DIFFICULTY,
 } from "@/lib/game";
 import { clink, blockedSound, winJingle, pourSound, corkPop, iceCrack, hazardSound } from "@/lib/audio";
 import { computeLayout, Position } from "@/lib/layout";
@@ -26,10 +27,13 @@ export interface GameState {
   lastScore: number;
   boardSize: { w: number; h: number };
   tubeSize: { w: number; h: number; segH: number };
+  difficulty: Difficulty;
+  cap: number;
 }
 
 const SAVE_KEY = "ws_save";
 const SCORE_KEY = "ws_score";
+const DIFF_KEY = "ws_diff";
 
 // Points for finishing a level: rewards higher levels and fewer moves.
 function levelScore(level: number, moves: number, optimal: number, stars: number): number {
@@ -67,6 +71,8 @@ export function useGame() {
     lastScore: 0,
     boardSize: { w: 360, h: 340 },
     tubeSize: { w: 30, h: 100, segH: 22 },
+    difficulty: DEFAULT_DIFFICULTY,
+    cap: DIFFICULTY_SETTINGS[DEFAULT_DIFFICULTY].cap,
   }));
 
   const stateRef = useRef(state);
@@ -79,21 +85,24 @@ export function useGame() {
     segEls.current[i] = el;
   }, []);
 
-  const getDims = () => {
-    if (typeof window === "undefined") return { tw: 30, th: 100 };
+  // Tube width comes from CSS; height scales with capacity (cap * segment +
+  // the fixed border/inset padding) so taller "Hard" tubes lay out correctly.
+  const TUBE_PAD = 12;
+  const getDims = (cap = stateRef.current.cap) => {
+    if (typeof window === "undefined") return { tw: 30, th: cap * 22 + TUBE_PAD };
     const cs = getComputedStyle(document.documentElement);
     const tw = parseFloat(cs.getPropertyValue("--tubew")) || 30;
-    const th = parseFloat(cs.getPropertyValue("--tubeh")) || 100;
-    return { tw, th };
+    const segH = parseFloat(cs.getPropertyValue("--segh")) || 22;
+    return { tw, th: cap * segH + TUBE_PAD };
   };
 
   const recalcLayout = useCallback(() => {
     const board = boardRef.current;
     if (!board) return;
-    const { tw, th } = getDims();
+    const s = stateRef.current;
+    const { tw, th } = getDims(s.cap);
     const bw = board.clientWidth || 360;
     const bh = Math.max(board.clientHeight, 600);
-    const s = stateRef.current;
     const positions = computeLayout(s.tubes.length, bw, bh, s.level, tw, th);
     setState(prev => ({ ...prev, positions, boardSize: { w: bw, h: bh } }));
   }, []);
@@ -103,12 +112,16 @@ export function useGame() {
   useEffect(() => {
     const snd = localStorage.getItem("ws_sound") !== "0";
     const score = parseInt(localStorage.getItem(SCORE_KEY) || "0", 10) || 0;
+    const savedDiff = localStorage.getItem(DIFF_KEY) as Difficulty | null;
+    const difficulty: Difficulty = savedDiff && DIFFICULTY_SETTINGS[savedDiff] ? savedDiff : DEFAULT_DIFFICULTY;
 
     let resumed: Partial<GameState> | null = null;
     try {
       const raw = localStorage.getItem(SAVE_KEY);
       const saved = raw ? JSON.parse(raw) : null;
       if (saved && Array.isArray(saved.tubes) && saved.tubes.length > 0) {
+        const resumeDiff: Difficulty = saved.difficulty && DIFFICULTY_SETTINGS[saved.difficulty as Difficulty]
+          ? (saved.difficulty as Difficulty) : difficulty;
         resumed = {
           level: saved.level ?? 1,
           tubes: saved.tubes as Tube[],
@@ -120,6 +133,8 @@ export function useGame() {
           addUses: saved.addUses ?? 1,
           optimal: saved.optimal ?? 0,
           won: !!saved.won,
+          difficulty: resumeDiff,
+          cap: typeof saved.cap === "number" ? saved.cap : DIFFICULTY_SETTINGS[resumeDiff].cap,
         };
       }
     } catch {
@@ -130,8 +145,12 @@ export function useGame() {
       setState(prev => ({ ...prev, ...resumed, sound: snd, score, mounted: true }));
     } else {
       const lvl = parseInt(localStorage.getItem("ws_level") || "1", 10);
-      const { tubes, optimal, mods } = generateLevel(lvl);
-      setState(prev => ({ ...prev, level: lvl, sound: snd, score, tubes, mods, optimal, mounted: true }));
+      const settings = DIFFICULTY_SETTINGS[difficulty];
+      const { tubes, optimal, mods } = generateLevel(lvl, settings);
+      setState(prev => ({
+        ...prev, level: lvl, sound: snd, score, tubes, mods, optimal,
+        difficulty, cap: settings.cap, mounted: true,
+      }));
     }
   }, []);
 
@@ -147,13 +166,15 @@ export function useGame() {
       addUses: state.addUses,
       optimal: state.optimal,
       won: state.won,
+      difficulty: state.difficulty,
+      cap: state.cap,
     };
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch { /* storage full / disabled */ }
-  }, [state.mounted, state.tubes, state.mods, state.moves, state.history, state.addUses, state.optimal, state.won, state.level]);
+  }, [state.mounted, state.tubes, state.mods, state.moves, state.history, state.addUses, state.optimal, state.won, state.level, state.difficulty, state.cap]);
 
   useEffect(() => {
     recalcLayout();
-  }, [state.tubes.length, state.level, state.mounted, recalcLayout]);
+  }, [state.tubes.length, state.level, state.mounted, state.cap, recalcLayout]);
 
   useEffect(() => {
     function onResize() {
@@ -167,7 +188,7 @@ export function useGame() {
   // Win is detected from the committed board, so it works no matter how many
   // pours were running concurrently when the final one landed.
   useEffect(() => {
-    if (state.mounted && state.tubes.length > 0 && !state.won && isWon(state.tubes)) {
+    if (state.mounted && state.tubes.length > 0 && !state.won && isWon(state.tubes, state.cap)) {
       winJingle();
       const stars = starsFor(state.moves, state.optimal);
       const pts = levelScore(state.level, state.moves, state.optimal, stars);
@@ -177,7 +198,7 @@ export function useGame() {
         return { ...prev, won: true, score: total, lastScore: pts };
       });
     }
-  }, [state.tubes, state.won, state.mounted, state.moves, state.optimal, state.level]);
+  }, [state.tubes, state.won, state.mounted, state.moves, state.optimal, state.level, state.cap]);
 
   // Dynamic (mid-play) events: tubes can temporarily freeze / lock / become
   // one-way as the player solves. Everything here is designed to keep the board
@@ -192,9 +213,10 @@ export function useGame() {
 
     // Decide a spawn outside the state updater so the random choice is stable
     // (avoids double-spawning under React StrictMode's double-invoke in dev).
+    const cap = state.cap;
     let spawn: ReturnType<typeof pickDynamicEvent> = null;
     if (moves > 0 && moves % DYN_EVENT_INTERVAL === 0 && Math.random() < DYN_EVENT_CHANCE) {
-      spawn = pickDynamicEvent(state.tubes, state.mods, moves, state.level);
+      spawn = pickDynamicEvent(state.tubes, state.mods, moves, state.level, cap);
     }
     if (spawn && stateRef.current.sound) hazardSound();
 
@@ -215,19 +237,20 @@ export function useGame() {
         changed = true;
       }
 
-      if (!hasLegalMove(prev.tubes, mods, prev.moves)) {
+      if (!hasLegalMove(prev.tubes, mods, prev.moves, cap)) {
         const stripped = mods.map(m => (m && m.dynamic ? null : m));
-        if (hasLegalMove(prev.tubes, stripped, prev.moves)) { mods = stripped; changed = true; }
+        if (hasLegalMove(prev.tubes, stripped, prev.moves, cap)) { mods = stripped; changed = true; }
       }
 
       return changed ? { ...prev, mods } : prev;
     });
-  }, [state.moves, state.mounted, state.won, state.tubes.length, state.level]);
+  }, [state.moves, state.mounted, state.won, state.tubes.length, state.level, state.cap]);
 
-  const buildLevel = useCallback((lv: number) => {
-    const { tubes, optimal, mods } = generateLevel(lv);
+  const buildLevel = useCallback((lv: number, diff: Difficulty = stateRef.current.difficulty) => {
+    const settings = DIFFICULTY_SETTINGS[diff];
+    const { tubes, optimal, mods } = generateLevel(lv, settings);
     const board = boardRef.current;
-    const { tw, th } = getDims();
+    const { tw, th } = getDims(settings.cap);
     const bw = board?.clientWidth || 360;
     const bh = Math.max(board?.clientHeight || 600, 600);
     const positions = computeLayout(tubes.length, bw, bh, lv, tw, th);
@@ -247,6 +270,8 @@ export function useGame() {
       hinted: [],
       positions,
       boardSize: { w: bw, h: bh },
+      difficulty: diff,
+      cap: settings.cap,
     }));
   }, []);
 
@@ -289,12 +314,13 @@ export function useGame() {
 
   const doPour = useCallback((from: number, to: number) => {
     const s = stateRef.current;
+    const cap = s.cap;
     const grp = topGroup(s.tubes[from]);
     const color = grp.color;
-    const count = Math.min(grp.count, CAP - s.tubes[to].length);
+    const count = Math.min(grp.count, cap - s.tubes[to].length);
     const existing = s.tubes[to].length;
     const moved = s.tubes[from].slice(s.tubes[from].length - count);
-    const willComplete = existing + count === CAP && isUniform(s.tubes[to].concat(moved));
+    const willComplete = existing + count === cap && isUniform(s.tubes[to].concat(moved));
     animatingRef.current.add(from);
     animatingRef.current.add(to);
     setState(prev => ({ ...prev, selected: -1 }));
@@ -504,7 +530,7 @@ export function useGame() {
     if (s.won) return;
     if (animatingRef.current.has(i)) return; // this tube is mid-pour
     if (s.selected === -1) {
-      if (!s.tubes[i].length || isComplete(s.tubes[i])) return;
+      if (!s.tubes[i].length || isComplete(s.tubes[i], s.cap)) return;
       // A frozen/locked tube can't be a source until it opens up.
       if (!canSource(s.mods[i], s.moves)) {
         if (s.sound) blockedSound();
@@ -516,7 +542,7 @@ export function useGame() {
       setState(prev => ({ ...prev, selected: -1 }));
     } else {
       const from = s.selected;
-      if (animatingRef.current.has(from) || !canPour(s.tubes, from, i, s.mods, s.moves)) {
+      if (animatingRef.current.has(from) || !canPour(s.tubes, from, i, s.mods, s.moves, s.cap)) {
         if (s.sound) blockedSound();
         setState(prev => ({ ...prev, selected: -1 }));
         return;
@@ -554,7 +580,7 @@ export function useGame() {
       const nt = [...prev.tubes, [] as number[]];
       const nm = [...prev.mods, null];
       const board = boardRef.current;
-      const { tw, th } = getDims();
+      const { tw, th } = getDims(prev.cap);
       const bw = board?.clientWidth || prev.boardSize.w;
       const bh = Math.max(board?.clientHeight || prev.boardSize.h, 600);
       const positions = computeLayout(nt.length, bw, bh, prev.level, tw, th);
@@ -571,7 +597,7 @@ export function useGame() {
   const hint = useCallback(() => {
     const s = stateRef.current;
     if (animatingRef.current.size > 0) return;
-    const sol = solve(s.tubes, 300000, s.mods, s.moves);
+    const sol = solve(s.tubes, 300000, s.mods, s.moves, s.cap);
     if (!sol || !sol.length) {
       if (s.sound) blockedSound();
       return;
@@ -612,6 +638,19 @@ export function useGame() {
     });
   }, []);
 
+  // Switching difficulty rebuilds the current level under the new preset (this
+  // restarts the level, since capacity/colors change the whole board).
+  const setDifficulty = useCallback((diff: Difficulty) => {
+    const s = stateRef.current;
+    if (animatingRef.current.size > 0 || diff === s.difficulty) return;
+    localStorage.setItem(DIFF_KEY, diff);
+    if (s.sound) clink();
+    // Clear the board first so the win effect can't re-fire, then rebuild on a
+    // later frame so the UI repaints before the (CPU-heavy) generation.
+    setState(prev => ({ ...prev, tubes: [], won: false, selected: -1 }));
+    requestAnimationFrame(() => requestAnimationFrame(() => buildLevel(stateRef.current.level, diff)));
+  }, [buildLevel]);
+
   return {
     state,
     boardRef,
@@ -625,6 +664,7 @@ export function useGame() {
     nextLevel,
     restart,
     toggleSound,
+    setDifficulty,
     recalcLayout,
   };
 }

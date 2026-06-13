@@ -107,6 +107,12 @@ A scrollable map of levels grouped into **themed worlds** (Lab, Ocean, Lava…) 
 
 Casual / Normal / Hard toggles that tweak the number of colors, empty tubes, and tube capacity.
 
+- **Presets:** Casual (cap 4, 3 empty tubes, −1 color), Normal (cap 4, 2 empty, baseline), Hard (cap 5, 2 empty, +1 color).
+- **Rule:** capacity is threaded through the whole engine — `solve`, `canPour`, `isComplete`, `isWon`, generation, special tubes, wildcards, and dynamic hazards all respect the active cap, so every preset stays solver-verified.
+- **UX:** a pill toggle in the header; switching presets rebuilds the current level under the new settings and the choice persists in `localStorage`. Tube height scales with capacity.
+
+*✅ Implemented — `DIFFICULTY_SETTINGS` drives capacity, empty tubes, and a color-count bias; `setDifficulty` rebuilds the level and persists the choice (`ws_diff`).*
+
 ---
 
 ## 💎 Meta & Economy

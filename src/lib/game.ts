@@ -5,6 +5,26 @@ export const PAL = [
 export const CAP = 4;
 export const EMPTY_TUBES = 2;
 
+// ---------------------------------------------------------------------------
+// Difficulty (FEATURES.md #7)
+// ---------------------------------------------------------------------------
+// Each preset tweaks three knobs: tube capacity, the number of empty helper
+// tubes, and a bias added to the per-level color count. `cap` is threaded
+// through the solver/rules so a board of any capacity stays provably solvable.
+export type Difficulty = "casual" | "normal" | "hard";
+export interface DiffSettings {
+  cap: number;        // segments per tube
+  emptyTubes: number; // spare empty tubes to work with
+  colorBias: number;  // added to the level's base color count
+  label: string;
+}
+export const DIFFICULTY_SETTINGS: Record<Difficulty, DiffSettings> = {
+  casual: { cap: 4, emptyTubes: 3, colorBias: -1, label: "Casual" },
+  normal: { cap: 4, emptyTubes: 2, colorBias: 0,  label: "Normal" },
+  hard:   { cap: 5, emptyTubes: 2, colorBias: 1,  label: "Hard" },
+};
+export const DEFAULT_DIFFICULTY: Difficulty = "normal";
+
 // A rainbow / wildcard segment (FEATURES.md #4). It matches ANY color it
 // touches, both as a pour source and a pour destination. Stored as a normal
 // segment value so save/resume is unaffected.
@@ -100,12 +120,12 @@ export function topRun(t: Tube): number {
   return topGroup(t).count;
 }
 
-export function isComplete(t: Tube): boolean {
-  return t.length === CAP && isUniform(t);
+export function isComplete(t: Tube, cap = CAP): boolean {
+  return t.length === cap && isUniform(t);
 }
 
-export function canPour(tubes: Tube[], a: number, b: number, mods?: Mods, moves = 0): boolean {
-  if (a === b || !tubes[a].length || tubes[b].length >= CAP) return false;
+export function canPour(tubes: Tube[], a: number, b: number, mods?: Mods, moves = 0, cap = CAP): boolean {
+  if (a === b || !tubes[a].length || tubes[b].length >= cap) return false;
   if (mods) {
     if (!canSource(mods[a], moves)) return false;
     if (!canDest(mods[b], moves)) return false;
@@ -113,11 +133,11 @@ export function canPour(tubes: Tube[], a: number, b: number, mods?: Mods, moves 
   return tubes[b].length === 0 || colorEq(topColor(tubes[b]), topGroup(tubes[a]).color);
 }
 
-export function isWon(tubes: Tube[]): boolean {
-  return tubes.every(t => t.length === 0 || isComplete(t));
+export function isWon(tubes: Tube[], cap = CAP): boolean {
+  return tubes.every(t => t.length === 0 || isComplete(t, cap));
 }
 
-export function solve(start: Tube[], maxNodes = 300000, mods?: Mods, baseMoves = 0): Move[] | null {
+export function solve(start: Tube[], maxNodes = 300000, mods?: Mods, baseMoves = 0, cap = CAP): Move[] | null {
   const s = start.map(t => t.slice());
   // Mutable thaw flags tracked through the search so frozen tubes can be used
   // as a source once a pour has cracked them open.
@@ -153,7 +173,7 @@ export function solve(start: Tube[], maxNodes = 300000, mods?: Mods, baseMoves =
   };
 
   const solvedAll = (st: Tube[]) =>
-    st.every(t => !t.length || isComplete(t));
+    st.every(t => !t.length || isComplete(t, cap));
 
   function dfs(): boolean {
     if (nodes++ > maxNodes) return false;
@@ -165,7 +185,7 @@ export function solve(start: Tube[], maxNodes = 300000, mods?: Mods, baseMoves =
     for (let i = 0; i < s.length; i++) {
       const a = s[i];
       if (!a.length) continue;
-      if (isComplete(a)) continue;
+      if (isComplete(a, cap)) continue;
       if (mods) {
         const ma = mods[i];
         if (ma && !isExpired(ma, moves)) {
@@ -180,7 +200,7 @@ export function solve(start: Tube[], maxNodes = 300000, mods?: Mods, baseMoves =
       for (let j = 0; j < s.length; j++) {
         if (i === j) continue;
         const b = s[j];
-        if (b.length >= CAP) continue;
+        if (b.length >= cap) continue;
         if (b.length && !colorEq(b[b.length - 1], color)) continue;
         if (mono && !b.length) continue;
         if (mods) {
@@ -190,7 +210,7 @@ export function solve(start: Tube[], maxNodes = 300000, mods?: Mods, baseMoves =
             if (mb.kind === "locked" && moves < (mb.unlockMoves ?? 0)) continue;
           }
         }
-        const cnt = Math.min(run, CAP - b.length);
+        const cnt = Math.min(run, cap - b.length);
         // Pouring a matching color onto a still-frozen tube cracks the ice.
         const didThaw = !!(mods && mods[j]?.kind === "frozen" && !thawed[j] && !isExpired(mods[j], moves) && b.length > 0);
         // Move the actual top `cnt` segments (preserving wild vs. real values).
@@ -217,8 +237,10 @@ export function solve(start: Tube[], maxNodes = 300000, mods?: Mods, baseMoves =
 
 // Gentle difficulty ramp so early levels are actually beatable:
 // L1-2: 4 colors, then +1 color every 2 levels, capped at the palette size.
-export function colorsForLevel(lv: number): number {
-  return Math.min(4 + Math.floor((lv - 1) / 2), PAL.length);
+// `bias` shifts the count for the difficulty preset (never below 3 colors).
+export function colorsForLevel(lv: number, bias = 0): number {
+  const base = 4 + Math.floor((lv - 1) / 2) + bias;
+  return Math.max(3, Math.min(base, PAL.length));
 }
 
 // How many rainbow/wildcard segments a level gets. They appear from L8 and
@@ -232,7 +254,7 @@ export function wildCountForLevel(lv: number): number {
 
 // Convert up to `count` real segments into wildcards in place, keeping the board
 // solvable and never auto-completing a tube. Returns how many were placed.
-function injectWildcards(board: Tube[], count: number): number {
+function injectWildcards(board: Tube[], count: number, cap = CAP): number {
   if (count <= 0) return 0;
   let placed = 0;
   for (let n = 0; n < count; n++) {
@@ -245,8 +267,8 @@ function injectWildcards(board: Tube[], count: number): number {
       if (tube[si] === WILD) continue;
       const prev = tube[si];
       tube[si] = WILD;
-      if (board.some(isComplete)) { tube[si] = prev; continue; }
-      const sol = solve(board.map(x => x.slice()), 60000);
+      if (board.some(t => isComplete(t, cap))) { tube[si] = prev; continue; }
+      const sol = solve(board.map(x => x.slice()), 60000, undefined, 0, cap);
       if (sol && sol.length >= 1) { placed++; done = true; }
       else { tube[si] = prev; }
     }
@@ -259,25 +281,29 @@ function injectWildcards(board: Tube[], count: number): number {
 // Liquid is spread across (colors + 1) tubes so not every tube starts full,
 // plus EMPTY_TUBES empty tubes. The solver verifies the board is completable
 // WITHOUT adding tubes, so the player only rarely needs the "Add tube" relief.
-export function generateLevel(lv: number): { tubes: Tube[]; optimal: number; mods: Mods } {
-  const colors = colorsForLevel(lv);
-  const units = colors * CAP;
+export function generateLevel(
+  lv: number,
+  settings: DiffSettings = DIFFICULTY_SETTINGS[DEFAULT_DIFFICULTY]
+): { tubes: Tube[]; optimal: number; mods: Mods } {
+  const { cap, emptyTubes, colorBias } = settings;
+  const colors = colorsForLevel(lv, colorBias);
+  const units = colors * cap;
   const liquidTubes = colors + 1;
 
   for (let attempt = 0; attempt < 400; attempt++) {
     const bag: number[] = [];
-    for (let c = 0; c < colors; c++) for (let k = 0; k < CAP; k++) bag.push(c);
+    for (let c = 0; c < colors; c++) for (let k = 0; k < cap; k++) bag.push(c);
     for (let i = bag.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [bag[i], bag[j]] = [bag[j], bag[i]];
     }
 
-    // Random fill sizes in [1, CAP] for each liquid tube, summing to `units`.
+    // Random fill sizes in [1, cap] for each liquid tube, summing to `units`.
     const sizes = new Array(liquidTubes).fill(1);
     let remaining = units - liquidTubes;
     while (remaining > 0) {
       const i = Math.floor(Math.random() * liquidTubes);
-      if (sizes[i] < CAP) { sizes[i]++; remaining--; }
+      if (sizes[i] < cap) { sizes[i]++; remaining--; }
     }
 
     const t: Tube[] = [];
@@ -286,28 +312,28 @@ export function generateLevel(lv: number): { tubes: Tube[]; optimal: number; mod
       t.push(bag.slice(pos, pos + sizes[i]));
       pos += sizes[i];
     }
-    if (t.some(isComplete)) continue;
+    if (t.some(x => isComplete(x, cap))) continue;
 
-    const board = t.concat(Array.from({ length: EMPTY_TUBES }, () => []));
-    const sol = solve(board.map(x => x.slice()));
+    const board = t.concat(Array.from({ length: emptyTubes }, () => []));
+    const sol = solve(board.map(x => x.slice()), 300000, undefined, 0, cap);
     if (sol && sol.length >= colors) {
       // Sprinkle in rainbow/wildcard segments (verified solvable), then try to
       // add a special tube; fall back to plain if a modifier can't be placed.
-      injectWildcards(board, wildCountForLevel(lv));
-      const withMod = assignModifier(board, lv);
+      injectWildcards(board, wildCountForLevel(lv), cap);
+      const withMod = assignModifier(board, lv, cap);
       if (withMod) return withMod;
-      const sol2 = solve(board.map(x => x.slice()), 120000) ?? sol;
+      const sol2 = solve(board.map(x => x.slice()), 120000, undefined, 0, cap) ?? sol;
       return { tubes: board, optimal: sol2.length, mods: board.map(() => null) };
     }
   }
 
   // Fallback: full tubes + empties (always solvable).
   const t: Tube[] = [];
-  for (let c = 0; c < colors; c++) t.push(Array(CAP).fill(c));
-  const a = t[0][CAP - 1];
-  t[0][CAP - 1] = t[1][CAP - 1];
-  t[1][CAP - 1] = a;
-  for (let e = 0; e < EMPTY_TUBES; e++) t.push([]);
+  for (let c = 0; c < colors; c++) t.push(Array(cap).fill(c));
+  const a = t[0][cap - 1];
+  t[0][cap - 1] = t[1][cap - 1];
+  t[1][cap - 1] = a;
+  for (let e = 0; e < emptyTubes; e++) t.push([]);
   return { tubes: t, optimal: 2, mods: t.map(() => null) };
 }
 
@@ -334,7 +360,7 @@ function targetModCount(lv: number): number {
 // board, re-verifying solvability after each one so the board is always
 // completable with the modifiers active. Returns null only when no modifier
 // applies (early levels).
-function assignModifier(board: Tube[], lv: number): { tubes: Tube[]; optimal: number; mods: Mods } | null {
+function assignModifier(board: Tube[], lv: number, cap = CAP): { tubes: Tube[]; optimal: number; mods: Mods } | null {
   const kinds = modKindsForLevel(lv);
   const target = targetModCount(lv);
   if (!kinds.length || target <= 0) return null;
@@ -363,7 +389,7 @@ function assignModifier(board: Tube[], lv: number): { tubes: Tube[]; optimal: nu
         .filter(({ i }) => mods[i] == null);
       const pool = kind === "locked"
         ? free                                   // any tube, incl. empty
-        : free.filter(({ t }) => t.length > 0 && !isComplete(t)); // needs liquid
+        : free.filter(({ t }) => t.length > 0 && !isComplete(t, cap)); // needs liquid
       if (!pool.length) break;
 
       const idx = pool[Math.floor(Math.random() * pool.length)].i;
@@ -372,7 +398,7 @@ function assignModifier(board: Tube[], lv: number): { tubes: Tube[]; optimal: nu
       else if (kind === "oneway") mods[idx] = { kind };
       else mods[idx] = { kind, unlockMoves: 2 + Math.floor(Math.random() * 4) };
 
-      const sol = solve(board.map(x => x.slice()), VERIFY_NODES, mods);
+      const sol = solve(board.map(x => x.slice()), VERIFY_NODES, mods, 0, cap);
       if (sol && sol.length >= 1) {
         lastSol = sol;
         placed++;
@@ -403,11 +429,11 @@ export const DYN_EVENT_CHANCE = 0.6;   // probability of spawning at each interv
 export const DYN_EVENT_MIN_LEVEL = 3;  // dynamic events start from this level
 
 // Is there at least one legal pour available on this board right now?
-export function hasLegalMove(tubes: Tube[], mods: Mods, moves: number): boolean {
+export function hasLegalMove(tubes: Tube[], mods: Mods, moves: number, cap = CAP): boolean {
   for (let i = 0; i < tubes.length; i++) {
     if (!tubes[i].length) continue;
     for (let j = 0; j < tubes.length; j++) {
-      if (i !== j && canPour(tubes, i, j, mods, moves)) return true;
+      if (i !== j && canPour(tubes, i, j, mods, moves, cap)) return true;
     }
   }
   return false;
@@ -416,7 +442,7 @@ export function hasLegalMove(tubes: Tube[], mods: Mods, moves: number): boolean 
 // Choose a safe temporary event for the current board, or null if none is
 // appropriate. "Safe" means the player still has a legal move with it active.
 export function pickDynamicEvent(
-  tubes: Tube[], mods: Mods, moves: number, level: number
+  tubes: Tube[], mods: Mods, moves: number, level: number, cap = CAP
 ): { index: number; mod: Modifier } | null {
   if (level < DYN_EVENT_MIN_LEVEL) return null;
   const kinds = modKindsForLevel(level);
@@ -429,7 +455,7 @@ export function pickDynamicEvent(
     // Eligible tubes carry no modifier yet and aren't already complete.
     const pool = tubes
       .map((t, i) => ({ t, i }))
-      .filter(({ t, i }) => mods[i] == null && !isComplete(t))
+      .filter(({ t, i }) => mods[i] == null && !isComplete(t, cap))
       .filter(({ t }) => (kind === "locked" ? true : t.length > 0));
     if (!pool.length) continue;
 
@@ -441,7 +467,7 @@ export function pickDynamicEvent(
 
     const trial = mods.slice();
     trial[index] = mod;
-    if (hasLegalMove(tubes, trial, moves)) return { index, mod };
+    if (hasLegalMove(tubes, trial, moves, cap)) return { index, mod };
   }
   return null;
 }

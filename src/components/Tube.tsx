@@ -12,20 +12,21 @@ interface TubeProps {
   hinted: boolean;
   mod?: Modifier | null;
   moves: number;
+  cap: number;
   onClick: () => void;
   registerTube: (i: number, el: HTMLDivElement | null) => void;
   registerSegs: (i: number, el: HTMLDivElement | null) => void;
 }
 
 export default function Tube({
-  tube, index, x, y, selected, hinted, mod, moves, onClick, registerTube, registerSegs,
+  tube, index, x, y, selected, hinted, mod, moves, cap, onClick, registerTube, registerSegs,
 }: TubeProps) {
   const top = tube.length ? tube[tube.length - 1] : -1;
   const glow =
     top === WILD ? "0 0 16px rgba(180,120,255,0.45)"
     : top >= 0 ? `0 0 14px ${PAL[top]}55`
     : undefined;
-  const done = isComplete(tube);
+  const done = isComplete(tube, cap);
 
   // Active special-tube states drive the overlays below. Dynamic events lift
   // once their move-count expiry passes.
@@ -65,7 +66,8 @@ export default function Tube({
         left: x,
         top: y,
         width: "var(--tubew)",
-        height: "var(--tubeh)",
+        // Height scales with capacity so taller "Hard" tubes render correctly.
+        height: `calc(var(--segh) * ${cap} + 12px)`,
         touchAction: "manipulation",
       }}
       className={`absolute cursor-pointer transition-transform duration-150 ease-out border-2 border-t-0 rounded-b-[14px] bg-white/[0.03] select-none

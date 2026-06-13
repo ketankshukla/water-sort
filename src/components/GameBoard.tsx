@@ -8,6 +8,7 @@ interface GameBoardProps {
   tubes: TubeType[];
   mods: Mods;
   moves: number;
+  cap: number;
   positions: Position[];
   selected: number;
   hinted: number[];
@@ -18,7 +19,7 @@ interface GameBoardProps {
 }
 
 export default function GameBoard({
-  tubes, mods, moves, positions, selected, hinted, onTubeClick, boardRef, registerTube, registerSegs,
+  tubes, mods, moves, cap, positions, selected, hinted, onTubeClick, boardRef, registerTube, registerSegs,
 }: GameBoardProps) {
   return (
     <div
@@ -37,6 +38,7 @@ export default function GameBoard({
           hinted={hinted.includes(i)}
           mod={mods[i]}
           moves={moves}
+          cap={cap}
           onClick={() => onTubeClick(i)}
           registerTube={registerTube}
           registerSegs={registerSegs}
