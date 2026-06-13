@@ -243,56 +243,42 @@ export function colorsForLevel(lv: number, bias = 0): number {
   return Math.max(3, Math.min(base, PAL.length));
 }
 
-// How many rainbow/wildcard segments a level gets. They appear from L8 and
-// ramp up gently so the "get out of jail" mechanic stays special.
-export function wildCountForLevel(lv: number): number {
+// How many full wildcard GROUPS a level gets. Each group is `cap` wildcard
+// units (one tube's worth) folded into the deal as a pseudo-color. Modelling
+// wildcards this way keeps every REAL color at exactly `cap` units, so no color
+// can ever be left short — wildcards become optional flexibility, never a trap.
+// They appear from L8 so the "get out of jail" mechanic stays special.
+export function wildTubesForLevel(lv: number): number {
   if (lv < 8) return 0;
-  if (lv < 14) return 1;
-  if (lv < 20) return 2;
-  return 3;
-}
-
-// Convert up to `count` real segments into wildcards in place, keeping the board
-// solvable and never auto-completing a tube. Returns how many were placed.
-function injectWildcards(board: Tube[], count: number, cap = CAP): number {
-  if (count <= 0) return 0;
-  let placed = 0;
-  for (let n = 0; n < count; n++) {
-    let done = false;
-    for (let tries = 0; tries < 20 && !done; tries++) {
-      const ti = Math.floor(Math.random() * board.length);
-      const tube = board[ti];
-      if (!tube.length) continue;
-      const si = Math.floor(Math.random() * tube.length);
-      if (tube[si] === WILD) continue;
-      const prev = tube[si];
-      tube[si] = WILD;
-      if (board.some(t => isComplete(t, cap))) { tube[si] = prev; continue; }
-      const sol = solve(board.map(x => x.slice()), 60000, undefined, 0, cap);
-      if (sol && sol.length >= 1) { placed++; done = true; }
-      else { tube[si] = prev; }
-    }
-    if (!done) break;
-  }
-  return placed;
+  if (lv < 20) return 1;
+  return 2;
 }
 
 // Build a partially-filled, always-solvable board.
-// Liquid is spread across (colors + 1) tubes so not every tube starts full,
-// plus EMPTY_TUBES empty tubes. The solver verifies the board is completable
-// WITHOUT adding tubes, so the player only rarely needs the "Add tube" relief.
+//
+// The deal is made of "groups", each contributing exactly `cap` units: one
+// group per real color, plus `wildTubesForLevel` groups of WILD units. Because
+// every group holds a full `cap` units, each color (and each wild group) can
+// always be sorted into its own complete tube — so a color can never be left
+// short and wildcards are purely optional flexibility rather than a dead-end.
+// Liquid is spread across (groups + 1) tubes so not every tube starts full,
+// plus `emptyTubes` empty tubes. The solver verifies completability WITHOUT
+// adding tubes, so the player only rarely needs the "Add tube" relief.
 export function generateLevel(
   lv: number,
   settings: DiffSettings = DIFFICULTY_SETTINGS[DEFAULT_DIFFICULTY]
 ): { tubes: Tube[]; optimal: number; mods: Mods } {
   const { cap, emptyTubes, colorBias } = settings;
   const colors = colorsForLevel(lv, colorBias);
-  const units = colors * cap;
-  const liquidTubes = colors + 1;
+  const wildTubes = wildTubesForLevel(lv);
+  const groups = colors + wildTubes;
+  const units = groups * cap;
+  const liquidTubes = groups + 1;
 
   for (let attempt = 0; attempt < 400; attempt++) {
     const bag: number[] = [];
     for (let c = 0; c < colors; c++) for (let k = 0; k < cap; k++) bag.push(c);
+    for (let w = 0; w < wildTubes; w++) for (let k = 0; k < cap; k++) bag.push(WILD);
     for (let i = bag.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [bag[i], bag[j]] = [bag[j], bag[i]];
@@ -312,18 +298,16 @@ export function generateLevel(
       t.push(bag.slice(pos, pos + sizes[i]));
       pos += sizes[i];
     }
+    // Reject any tube that starts already complete (a full mono/all-wild tube).
     if (t.some(x => isComplete(x, cap))) continue;
 
     const board = t.concat(Array.from({ length: emptyTubes }, () => []));
     const sol = solve(board.map(x => x.slice()), 300000, undefined, 0, cap);
-    if (sol && sol.length >= colors) {
-      // Sprinkle in rainbow/wildcard segments (verified solvable), then try to
-      // add a special tube; fall back to plain if a modifier can't be placed.
-      injectWildcards(board, wildCountForLevel(lv), cap);
+    if (sol && sol.length >= groups) {
+      // Try to add a special tube; fall back to plain if none can be placed.
       const withMod = assignModifier(board, lv, cap);
       if (withMod) return withMod;
-      const sol2 = solve(board.map(x => x.slice()), 120000, undefined, 0, cap) ?? sol;
-      return { tubes: board, optimal: sol2.length, mods: board.map(() => null) };
+      return { tubes: board, optimal: sol.length, mods: board.map(() => null) };
     }
   }
 
