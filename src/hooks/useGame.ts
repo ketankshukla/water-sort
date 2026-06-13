@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import {
   Tube, Move, Mods, canSource, isComplete, canPour, isWon, solve, generateLevel,
-  topGroup, isUniform, segBg, WILD,
+  topGroup, isUniform, segBg, WILD, applyPour, isProvablyStuck,
   hasLegalMove, pickDynamicEvent, DYN_EVENT_INTERVAL, DYN_EVENT_CHANCE,
   Difficulty, DIFFICULTY_SETTINGS, DEFAULT_DIFFICULTY,
 } from "@/lib/game";
@@ -545,6 +545,16 @@ export function useGame() {
       if (animatingRef.current.has(from) || !canPour(s.tubes, from, i, s.mods, s.moves, s.cap)) {
         if (s.sound) blockedSound();
         setState(prev => ({ ...prev, selected: -1 }));
+        return;
+      }
+      // Dead-end guard: refuse a (legal) pour that would leave the board with no
+      // possible solution — this stops wildcards from ever trapping the player.
+      // Fail-open: only blocked when the solver PROVES the result is unwinnable.
+      const next = applyPour(s.tubes, s.mods, from, i, s.cap);
+      if (isProvablyStuck(next.tubes, next.mods, s.moves + 1, s.cap)) {
+        if (s.sound) blockedSound();
+        setState(prev => ({ ...prev, selected: -1, hinted: [from, i] }));
+        setTimeout(() => setState(prev => ({ ...prev, hinted: [] })), 450);
         return;
       }
       doPour(from, i);

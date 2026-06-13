@@ -137,7 +137,10 @@ export function isWon(tubes: Tube[], cap = CAP): boolean {
   return tubes.every(t => t.length === 0 || isComplete(t, cap));
 }
 
-export function solve(start: Tube[], maxNodes = 300000, mods?: Mods, baseMoves = 0, cap = CAP): Move[] | null {
+export function solve(
+  start: Tube[], maxNodes = 300000, mods?: Mods, baseMoves = 0, cap = CAP,
+  out?: { capped: boolean }
+): Move[] | null {
   const s = start.map(t => t.slice());
   // Mutable thaw flags tracked through the search so frozen tubes can be used
   // as a source once a pour has cracked them open.
@@ -176,7 +179,7 @@ export function solve(start: Tube[], maxNodes = 300000, mods?: Mods, baseMoves =
     st.every(t => !t.length || isComplete(t, cap));
 
   function dfs(): boolean {
-    if (nodes++ > maxNodes) return false;
+    if (nodes++ > maxNodes) { if (out) out.capped = true; return false; }
     if (solvedAll(s)) return true;
     const k = key(s);
     if (visited.has(k)) return false;
@@ -233,6 +236,42 @@ export function solve(start: Tube[], maxNodes = 300000, mods?: Mods, baseMoves =
   }
 
   return dfs() ? path.slice() : null;
+}
+
+// Apply a pour (the movable top group of `from` onto `to`) to FRESH copies of
+// the board, mirroring the runtime's modifier transitions: a matching pour
+// thaws a frozen destination, and draining a one-way source to empty converts
+// it to a normal tube. Used for dead-end look-ahead before a move is committed.
+export function applyPour(
+  tubes: Tube[], mods: Mods, from: number, to: number, cap = CAP
+): { tubes: Tube[]; mods: Mods } {
+  const grp = topGroup(tubes[from]);
+  const count = Math.min(grp.count, cap - tubes[to].length);
+  const nt = tubes.map(t => t.slice());
+  const moved = nt[from].splice(nt[from].length - count, count);
+  for (const seg of moved) nt[to].push(seg);
+  const willThaw = !!(mods[to] && mods[to]!.kind === "frozen" && !mods[to]!.thawed);
+  const drainedOneway = mods[from]?.kind === "oneway" && nt[from].length === 0;
+  let nm = mods;
+  if (willThaw || drainedOneway) {
+    nm = mods.map((m, i) => {
+      if (i === to && m && m.kind === "frozen") return { ...m, thawed: true };
+      if (i === from && drainedOneway) return null;
+      return m;
+    });
+  }
+  return { tubes: nt, mods: nm };
+}
+
+// True only when we can PROVE the board has no winning solution (the search
+// finished without finding one). If the search is capped/inconclusive we return
+// false ("fail open") so a legal move is NEVER wrongly blocked. This powers the
+// dead-end guard that stops wildcards (or any move) from trapping the player.
+export function isProvablyStuck(tubes: Tube[], mods: Mods, moves: number, cap = CAP): boolean {
+  if (isWon(tubes, cap)) return false;
+  const out = { capped: false };
+  const sol = solve(tubes, 200000, mods, moves, cap, out);
+  return sol === null && !out.capped;
 }
 
 // Gentle difficulty ramp so early levels are actually beatable:
