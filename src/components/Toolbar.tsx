@@ -5,16 +5,14 @@ interface ToolbarProps {
   canAdd: boolean;
   onUndo: () => void;
   onAdd: () => void;
-  onNew: () => void;
   onHint: () => void;
   onRestart: () => void;
 }
 
-export default function Toolbar({ canUndo, canAdd, onUndo, onAdd, onNew, onHint, onRestart }: ToolbarProps) {
+export default function Toolbar({ canUndo, canAdd, onUndo, onAdd, onHint, onRestart }: ToolbarProps) {
   const tools = [
     { icon: "↩", label: "Undo", onClick: onUndo, disabled: !canUndo },
     { icon: "＋", label: "Add tube", onClick: onAdd, disabled: !canAdd },
-    { icon: "⟳", label: "New deal", onClick: onNew, disabled: false },
     { icon: "💡", label: "Hint", onClick: onHint, disabled: false },
     { icon: "⏮", label: "Level 1", onClick: onRestart, disabled: false },
   ];

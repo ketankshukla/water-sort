@@ -10,7 +10,7 @@ import Confetti from "@/components/Confetti";
 export default function Home() {
   const {
     state, boardRef, registerTube, registerSegs,
-    selectTube, undo, addTube, newDeal, hint, nextLevel, restart, toggleSound, setDifficulty,
+    selectTube, undo, addTube, hint, nextLevel, restart, toggleSound, setDifficulty,
   } = useGame();
 
   const stars = starsFor(state.moves, state.optimal);
@@ -50,7 +50,6 @@ export default function Home() {
         canAdd={state.addUses > 0}
         onUndo={undo}
         onAdd={addTube}
-        onNew={newDeal}
         onHint={hint}
         onRestart={handleRestart}
       />

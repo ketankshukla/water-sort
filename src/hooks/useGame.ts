@@ -29,6 +29,9 @@ export interface GameState {
   tubeSize: { w: number; h: number; segH: number };
   difficulty: Difficulty;
   cap: number;
+  // Empty tubes the player has earned by completing tubes (max 2). They are
+  // appended during play rather than dealt at the start.
+  earnedEmpties: number;
 }
 
 const SAVE_KEY = "ws_save";
@@ -73,6 +76,7 @@ export function useGame() {
     tubeSize: { w: 30, h: 100, segH: 22 },
     difficulty: DEFAULT_DIFFICULTY,
     cap: DIFFICULTY_SETTINGS[DEFAULT_DIFFICULTY].cap,
+    earnedEmpties: 0,
   }));
 
   const stateRef = useRef(state);
@@ -135,6 +139,7 @@ export function useGame() {
           won: !!saved.won,
           difficulty: resumeDiff,
           cap: typeof saved.cap === "number" ? saved.cap : DIFFICULTY_SETTINGS[resumeDiff].cap,
+          earnedEmpties: typeof saved.earnedEmpties === "number" ? saved.earnedEmpties : 0,
         };
       }
     } catch {
@@ -149,7 +154,7 @@ export function useGame() {
       const { tubes, optimal, mods } = generateLevel(lvl, settings);
       setState(prev => ({
         ...prev, level: lvl, sound: snd, score, tubes, mods, optimal,
-        difficulty, cap: settings.cap, mounted: true,
+        difficulty, cap: settings.cap, mounted: true, earnedEmpties: 0,
       }));
     }
   }, []);
@@ -168,9 +173,10 @@ export function useGame() {
       won: state.won,
       difficulty: state.difficulty,
       cap: state.cap,
+      earnedEmpties: state.earnedEmpties,
     };
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch { /* storage full / disabled */ }
-  }, [state.mounted, state.tubes, state.mods, state.moves, state.history, state.addUses, state.optimal, state.won, state.level, state.difficulty, state.cap]);
+  }, [state.mounted, state.tubes, state.mods, state.moves, state.history, state.addUses, state.optimal, state.won, state.level, state.difficulty, state.cap, state.earnedEmpties]);
 
   useEffect(() => {
     recalcLayout();
@@ -199,6 +205,29 @@ export function useGame() {
       });
     }
   }, [state.tubes, state.won, state.mounted, state.moves, state.optimal, state.level, state.cap]);
+
+  // Earned empties: the player starts with no spare empty tubes (just the single
+  // working tube the deal needs to be solvable). Completing 2 tubes grants one
+  // empty, completing 4 grants a second, and that's the cap. Earned empties are
+  // never taken back (undo keeps them) so the board can only get easier.
+  useEffect(() => {
+    if (!state.mounted || state.tubes.length === 0 || state.won) return;
+    const completed = state.tubes.reduce((n, t) => n + (isComplete(t, state.cap) ? 1 : 0), 0);
+    const desired = Math.min(2, Math.floor(completed / 2));
+    if (desired <= state.earnedEmpties) return;
+    setState(prev => {
+      if (desired <= prev.earnedEmpties) return prev;
+      const add = desired - prev.earnedEmpties;
+      const tubes = [...prev.tubes, ...Array.from({ length: add }, () => [] as number[])];
+      const mods = [...prev.mods, ...Array.from({ length: add }, () => null)];
+      const board = boardRef.current;
+      const { tw, th } = getDims(prev.cap);
+      const bw = board?.clientWidth || prev.boardSize.w;
+      const bh = Math.max(board?.clientHeight || prev.boardSize.h, 600);
+      const positions = computeLayout(tubes.length, bw, bh, prev.level, tw, th);
+      return { ...prev, tubes, mods, earnedEmpties: desired, positions, boardSize: { w: bw, h: bh } };
+    });
+  }, [state.tubes, state.mounted, state.won, state.cap, state.earnedEmpties]);
 
   // Dynamic (mid-play) events: tubes can temporarily freeze / lock / become
   // one-way as the player solves. Everything here is designed to keep the board
@@ -272,6 +301,7 @@ export function useGame() {
       boardSize: { w: bw, h: bh },
       difficulty: diff,
       cap: settings.cap,
+      earnedEmpties: 0,
     }));
   }, []);
 
@@ -598,12 +628,6 @@ export function useGame() {
     });
   }, []);
 
-  const newDeal = useCallback(() => {
-    const s = stateRef.current;
-    if (animatingRef.current.size > 0) return;
-    buildLevel(s.level);
-  }, [buildLevel]);
-
   const hint = useCallback(() => {
     const s = stateRef.current;
     if (animatingRef.current.size > 0) return;
@@ -669,7 +693,6 @@ export function useGame() {
     selectTube,
     undo,
     addTube,
-    newDeal,
     hint,
     nextLevel,
     restart,

@@ -282,82 +282,89 @@ export function colorsForLevel(lv: number, bias = 0): number {
   return Math.max(3, Math.min(base, PAL.length));
 }
 
-// How many full wildcard GROUPS a level gets. Each group is `cap` wildcard
-// units (one tube's worth) folded into the deal as a pseudo-color. Modelling
-// wildcards this way keeps every REAL color at exactly `cap` units, so no color
-// can ever be left short — wildcards become optional flexibility, never a trap.
-// They appear from L8 so the "get out of jail" mechanic stays special.
-export function wildTubesForLevel(lv: number): number {
-  if (lv < 8) return 0;
-  if (lv < 20) return 1;
-  return 2;
+// Every level uses all 12 palette colors and no wildcards.
+export const LEVEL_COLORS = PAL.length;
+
+function shuffleInPlace<T>(arr: T[]): void {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
 }
 
-// Build a partially-filled, always-solvable board.
+// Perform one "reverse pour": the exact inverse of a legal forward pour. Moving
+// `m` units of color X off the top of tube B into tube A is undone by the
+// forward move "pour m units of X from A onto B". To keep that forward move
+// legal on replay we only ever (a) move part of B's top run (leaving X on top),
+// or (b) move B's entire contents when B is a single color (emptying it). Doing
+// only such reverse moves from a SOLVED board guarantees the result is solvable.
+function reverseMove(board: Tube[], cap: number): boolean {
+  const order = board.map((_, i) => i);
+  shuffleInPlace(order);
+  for (const b of order) {
+    const tube = board[b];
+    if (!tube.length) continue;
+    const x = tube[tube.length - 1];
+    let run = 0;
+    for (let i = tube.length - 1; i >= 0 && tube[i] === x; i--) run++;
+    // Max we may lift while keeping the inverse forward move legal.
+    const maxByRun = run === tube.length ? run : run - 1;
+    if (maxByRun < 1) continue;
+
+    const dests = board
+      .map((t, i) => ({ t, i }))
+      .filter(({ t, i }) => i !== b && t.length < cap && (t.length === 0 || t[t.length - 1] === x))
+      .map(({ i }) => i);
+    if (!dests.length) continue;
+    shuffleInPlace(dests);
+    const a = dests[0];
+    const space = cap - board[a].length;
+    const maxMove = Math.min(space, maxByRun);
+    if (maxMove < 1) continue;
+    const m = 1 + Math.floor(Math.random() * maxMove);
+    for (let k = 0; k < m; k++) { tube.pop(); board[a].push(x); }
+    return true;
+  }
+  return false;
+}
+
+// Build a level by REVERSE-SHUFFLING from a solved board. This is fast (no
+// solver-retry loop, so "New deal" can never freeze) and always solvable.
 //
-// The deal is made of "groups", each contributing exactly `cap` units: one
-// group per real color, plus `wildTubesForLevel` groups of WILD units. Because
-// every group holds a full `cap` units, each color (and each wild group) can
-// always be sorted into its own complete tube — so a color can never be left
-// short and wildcards are purely optional flexibility rather than a dead-end.
-// Liquid is spread across (groups + 1) tubes so not every tube starts full,
-// plus `emptyTubes` empty tubes. The solver verifies completability WITHOUT
-// adding tubes, so the player only rarely needs the "Add tube" relief.
+// The board is exactly 12 color tubes + 1 spare "working" tube (13 total). The
+// working tube provides the single tube's worth of free space that any water-
+// sort needs to be solvable — a 12-tube/12-color board with no free space is
+// mathematically impossible. The player earns additional empty tubes during
+// play (see useGame) rather than starting with them.
 export function generateLevel(
   lv: number,
   settings: DiffSettings = DIFFICULTY_SETTINGS[DEFAULT_DIFFICULTY]
 ): { tubes: Tube[]; optimal: number; mods: Mods } {
-  const { cap, emptyTubes, colorBias } = settings;
-  const colors = colorsForLevel(lv, colorBias);
-  const wildTubes = wildTubesForLevel(lv);
-  const groups = colors + wildTubes;
-  const units = groups * cap;
-  const liquidTubes = groups + 1;
+  const { cap } = settings;
+  const colors = LEVEL_COLORS;
 
-  for (let attempt = 0; attempt < 400; attempt++) {
-    const bag: number[] = [];
-    for (let c = 0; c < colors; c++) for (let k = 0; k < cap; k++) bag.push(c);
-    for (let w = 0; w < wildTubes; w++) for (let k = 0; k < cap; k++) bag.push(WILD);
-    for (let i = bag.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [bag[i], bag[j]] = [bag[j], bag[i]];
-    }
+  // Solved start: each color in its own full tube, plus one empty working tube.
+  const board: Tube[] = [];
+  for (let c = 0; c < colors; c++) board.push(Array(cap).fill(c));
+  board.push([]);
 
-    // Random fill sizes in [1, cap] for each liquid tube, summing to `units`.
-    const sizes = new Array(liquidTubes).fill(1);
-    let remaining = units - liquidTubes;
-    while (remaining > 0) {
-      const i = Math.floor(Math.random() * liquidTubes);
-      if (sizes[i] < cap) { sizes[i]++; remaining--; }
-    }
+  // Scramble. More steps at higher levels for a tougher mix.
+  const steps = colors * cap * (4 + Math.min(6, Math.floor(lv / 3)));
+  for (let s = 0; s < steps; s++) reverseMove(board, cap);
 
-    const t: Tube[] = [];
-    let pos = 0;
-    for (let i = 0; i < liquidTubes; i++) {
-      t.push(bag.slice(pos, pos + sizes[i]));
-      pos += sizes[i];
-    }
-    // Reject any tube that starts already complete (a full mono/all-wild tube).
-    if (t.some(x => isComplete(x, cap))) continue;
+  // Guarantee a non-trivial puzzle: keep shuffling if it landed back on solved.
+  let guard = 0;
+  while (isWon(board, cap) && guard++ < 200) reverseMove(board, cap);
 
-    const board = t.concat(Array.from({ length: emptyTubes }, () => []));
-    const sol = solve(board.map(x => x.slice()), 300000, undefined, 0, cap);
-    if (sol && sol.length >= groups) {
-      // Try to add a special tube; fall back to plain if none can be placed.
-      const withMod = assignModifier(board, lv, cap);
-      if (withMod) return withMod;
-      return { tubes: board, optimal: sol.length, mods: board.map(() => null) };
-    }
-  }
+  // One bounded solve for the optimal-move estimate used by star scoring. The
+  // board is solvable by construction, so this returns quickly; if the search
+  // is capped we fall back to a lenient estimate.
+  const sol = solve(board.map(x => x.slice()), 200000, undefined, 0, cap);
+  const optimal = sol ? sol.length : colors * 2;
 
-  // Fallback: full tubes + empties (always solvable).
-  const t: Tube[] = [];
-  for (let c = 0; c < colors; c++) t.push(Array(cap).fill(c));
-  const a = t[0][cap - 1];
-  t[0][cap - 1] = t[1][cap - 1];
-  t[1][cap - 1] = a;
-  for (let e = 0; e < emptyTubes; e++) t.push([]);
-  return { tubes: t, optimal: 2, mods: t.map(() => null) };
+  const withMod = assignModifier(board, lv, cap);
+  if (withMod) return { ...withMod, optimal: withMod.optimal || optimal };
+  return { tubes: board, optimal, mods: board.map(() => null) };
 }
 
 // Which special-tube kinds are available at a given level. They unlock
