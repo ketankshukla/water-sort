@@ -1,12 +1,16 @@
-<h1 align="center">🧪✨ Water Sort — Feature Ideas ✨🧪</h1>
+<div align="center">
 
-<p align="center">
+<h1 style="font-family:'Segoe UI',Verdana,sans-serif;">🧪✨ Water Sort — Feature Ideas ✨🧪</h1>
+
+<p>
   <img src="https://img.shields.io/badge/status-roadmap-blueviolet?style=for-the-badge" alt="roadmap" />
   <img src="https://img.shields.io/badge/build-passing-success?style=for-the-badge" alt="passing" />
   <img src="https://img.shields.io/badge/let's-build%20one%20at%20a%20time-ff69b4?style=for-the-badge" alt="one at a time" />
 </p>
 
-<p align="center"><b>A menu of ideas to make the game more exciting. Pick one and we'll build it together. 🚀</b></p>
+<p style="font-size:1.3rem; line-height:1.6;"><b>A menu of ideas to make the game more exciting. Pick one and we'll build it together. 🚀</b></p>
+
+</div>
 
 ---
 
