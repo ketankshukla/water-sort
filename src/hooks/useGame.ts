@@ -29,14 +29,14 @@ export interface GameState {
   tubeSize: { w: number; h: number; segH: number };
   difficulty: Difficulty;
   cap: number;
-  // Empty tubes the player has earned by completing tubes (max 2). They are
-  // appended during play rather than dealt at the start.
-  earnedEmpties: number;
 }
 
 const SAVE_KEY = "ws_save";
 const SCORE_KEY = "ws_score";
 const DIFF_KEY = "ws_diff";
+// Bumped when the board format/generator changes incompatibly. Saves from an
+// older version are discarded so the player always resumes a valid board.
+const SAVE_VERSION = 2;
 
 // Points for finishing a level: rewards higher levels and fewer moves.
 function levelScore(level: number, moves: number, optimal: number, stars: number): number {
@@ -76,7 +76,6 @@ export function useGame() {
     tubeSize: { w: 30, h: 100, segH: 22 },
     difficulty: DEFAULT_DIFFICULTY,
     cap: DIFFICULTY_SETTINGS[DEFAULT_DIFFICULTY].cap,
-    earnedEmpties: 0,
   }));
 
   const stateRef = useRef(state);
@@ -123,7 +122,7 @@ export function useGame() {
     try {
       const raw = localStorage.getItem(SAVE_KEY);
       const saved = raw ? JSON.parse(raw) : null;
-      if (saved && Array.isArray(saved.tubes) && saved.tubes.length > 0) {
+      if (saved && saved.v === SAVE_VERSION && Array.isArray(saved.tubes) && saved.tubes.length > 0) {
         const resumeDiff: Difficulty = saved.difficulty && DIFFICULTY_SETTINGS[saved.difficulty as Difficulty]
           ? (saved.difficulty as Difficulty) : difficulty;
         resumed = {
@@ -139,7 +138,6 @@ export function useGame() {
           won: !!saved.won,
           difficulty: resumeDiff,
           cap: typeof saved.cap === "number" ? saved.cap : DIFFICULTY_SETTINGS[resumeDiff].cap,
-          earnedEmpties: typeof saved.earnedEmpties === "number" ? saved.earnedEmpties : 0,
         };
       }
     } catch {
@@ -154,7 +152,7 @@ export function useGame() {
       const { tubes, optimal, mods } = generateLevel(lvl, settings);
       setState(prev => ({
         ...prev, level: lvl, sound: snd, score, tubes, mods, optimal,
-        difficulty, cap: settings.cap, mounted: true, earnedEmpties: 0,
+        difficulty, cap: settings.cap, mounted: true,
       }));
     }
   }, []);
@@ -163,6 +161,7 @@ export function useGame() {
   useEffect(() => {
     if (!state.mounted || state.tubes.length === 0) return;
     const save = {
+      v: SAVE_VERSION,
       level: state.level,
       tubes: state.tubes,
       mods: state.mods,
@@ -173,10 +172,9 @@ export function useGame() {
       won: state.won,
       difficulty: state.difficulty,
       cap: state.cap,
-      earnedEmpties: state.earnedEmpties,
     };
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch { /* storage full / disabled */ }
-  }, [state.mounted, state.tubes, state.mods, state.moves, state.history, state.addUses, state.optimal, state.won, state.level, state.difficulty, state.cap, state.earnedEmpties]);
+  }, [state.mounted, state.tubes, state.mods, state.moves, state.history, state.addUses, state.optimal, state.won, state.level, state.difficulty, state.cap]);
 
   useEffect(() => {
     recalcLayout();
@@ -205,29 +203,6 @@ export function useGame() {
       });
     }
   }, [state.tubes, state.won, state.mounted, state.moves, state.optimal, state.level, state.cap]);
-
-  // Earned empties: the player starts with no spare empty tubes (just the single
-  // working tube the deal needs to be solvable). Completing 2 tubes grants one
-  // empty, completing 4 grants a second, and that's the cap. Earned empties are
-  // never taken back (undo keeps them) so the board can only get easier.
-  useEffect(() => {
-    if (!state.mounted || state.tubes.length === 0 || state.won) return;
-    const completed = state.tubes.reduce((n, t) => n + (isComplete(t, state.cap) ? 1 : 0), 0);
-    const desired = Math.min(2, Math.floor(completed / 2));
-    if (desired <= state.earnedEmpties) return;
-    setState(prev => {
-      if (desired <= prev.earnedEmpties) return prev;
-      const add = desired - prev.earnedEmpties;
-      const tubes = [...prev.tubes, ...Array.from({ length: add }, () => [] as number[])];
-      const mods = [...prev.mods, ...Array.from({ length: add }, () => null)];
-      const board = boardRef.current;
-      const { tw, th } = getDims(prev.cap);
-      const bw = board?.clientWidth || prev.boardSize.w;
-      const bh = Math.max(board?.clientHeight || prev.boardSize.h, 600);
-      const positions = computeLayout(tubes.length, bw, bh, prev.level, tw, th);
-      return { ...prev, tubes, mods, earnedEmpties: desired, positions, boardSize: { w: bw, h: bh } };
-    });
-  }, [state.tubes, state.mounted, state.won, state.cap, state.earnedEmpties]);
 
   // Dynamic (mid-play) events: tubes can temporarily freeze / lock / become
   // one-way as the player solves. Everything here is designed to keep the board
@@ -301,7 +276,6 @@ export function useGame() {
       boardSize: { w: bw, h: bh },
       difficulty: diff,
       cap: settings.cap,
-      earnedEmpties: 0,
     }));
   }, []);
 
@@ -672,19 +646,6 @@ export function useGame() {
     });
   }, []);
 
-  // Switching difficulty rebuilds the current level under the new preset (this
-  // restarts the level, since capacity/colors change the whole board).
-  const setDifficulty = useCallback((diff: Difficulty) => {
-    const s = stateRef.current;
-    if (animatingRef.current.size > 0 || diff === s.difficulty) return;
-    localStorage.setItem(DIFF_KEY, diff);
-    if (s.sound) clink();
-    // Clear the board first so the win effect can't re-fire, then rebuild on a
-    // later frame so the UI repaints before the (CPU-heavy) generation.
-    setState(prev => ({ ...prev, tubes: [], won: false, selected: -1 }));
-    requestAnimationFrame(() => requestAnimationFrame(() => buildLevel(stateRef.current.level, diff)));
-  }, [buildLevel]);
-
   return {
     state,
     boardRef,
@@ -697,7 +658,6 @@ export function useGame() {
     nextLevel,
     restart,
     toggleSound,
-    setDifficulty,
     recalcLayout,
   };
 }

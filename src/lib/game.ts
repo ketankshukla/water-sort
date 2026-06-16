@@ -292,50 +292,12 @@ function shuffleInPlace<T>(arr: T[]): void {
   }
 }
 
-// Perform one "reverse pour": the exact inverse of a legal forward pour. Moving
-// `m` units of color X off the top of tube B into tube A is undone by the
-// forward move "pour m units of X from A onto B". To keep that forward move
-// legal on replay we only ever (a) move part of B's top run (leaving X on top),
-// or (b) move B's entire contents when B is a single color (emptying it). Doing
-// only such reverse moves from a SOLVED board guarantees the result is solvable.
-function reverseMove(board: Tube[], cap: number): boolean {
-  const order = board.map((_, i) => i);
-  shuffleInPlace(order);
-  for (const b of order) {
-    const tube = board[b];
-    if (!tube.length) continue;
-    const x = tube[tube.length - 1];
-    let run = 0;
-    for (let i = tube.length - 1; i >= 0 && tube[i] === x; i--) run++;
-    // Max we may lift while keeping the inverse forward move legal.
-    const maxByRun = run === tube.length ? run : run - 1;
-    if (maxByRun < 1) continue;
-
-    const dests = board
-      .map((t, i) => ({ t, i }))
-      .filter(({ t, i }) => i !== b && t.length < cap && (t.length === 0 || t[t.length - 1] === x))
-      .map(({ i }) => i);
-    if (!dests.length) continue;
-    shuffleInPlace(dests);
-    const a = dests[0];
-    const space = cap - board[a].length;
-    const maxMove = Math.min(space, maxByRun);
-    if (maxMove < 1) continue;
-    const m = 1 + Math.floor(Math.random() * maxMove);
-    for (let k = 0; k < m; k++) { tube.pop(); board[a].push(x); }
-    return true;
-  }
-  return false;
-}
-
-// Build a level by REVERSE-SHUFFLING from a solved board. This is fast (no
-// solver-retry loop, so "New deal" can never freeze) and always solvable.
-//
-// The board is exactly 12 color tubes + 1 spare "working" tube (13 total). The
-// working tube provides the single tube's worth of free space that any water-
-// sort needs to be solvable — a 12-tube/12-color board with no free space is
-// mathematically impossible. The player earns additional empty tubes during
-// play (see useGame) rather than starting with them.
+// Build a level by FORWARD random fill + solver verification. Each of the 12
+// colors contributes `cap` units, shuffled and dealt into 12 fully-mixed tubes
+// (so no tube ever starts already completed/"corked"), plus EMPTY_TUBES empty
+// tubes. The solver then confirms the board is solvable. Random 12-color boards
+// solve ~100% of the time with 2 empties and the search is cheap (a few hundred
+// nodes), so this is fast and can never freeze.
 export function generateLevel(
   lv: number,
   settings: DiffSettings = DIFFICULTY_SETTINGS[DEFAULT_DIFFICULTY]
@@ -343,28 +305,35 @@ export function generateLevel(
   const { cap } = settings;
   const colors = LEVEL_COLORS;
 
-  // Solved start: each color in its own full tube, plus one empty working tube.
-  const board: Tube[] = [];
-  for (let c = 0; c < colors; c++) board.push(Array(cap).fill(c));
-  board.push([]);
+  for (let attempt = 0; attempt < 500; attempt++) {
+    const bag: number[] = [];
+    for (let c = 0; c < colors; c++) for (let k = 0; k < cap; k++) bag.push(c);
+    shuffleInPlace(bag);
 
-  // Scramble. More steps at higher levels for a tougher mix.
-  const steps = colors * cap * (4 + Math.min(6, Math.floor(lv / 3)));
-  for (let s = 0; s < steps; s++) reverseMove(board, cap);
+    const tubes: Tube[] = [];
+    for (let i = 0; i < colors; i++) tubes.push(bag.slice(i * cap, (i + 1) * cap));
+    // Never start with a completed ("corked") tube.
+    if (tubes.some(t => isComplete(t, cap))) continue;
 
-  // Guarantee a non-trivial puzzle: keep shuffling if it landed back on solved.
-  let guard = 0;
-  while (isWon(board, cap) && guard++ < 200) reverseMove(board, cap);
+    const board = tubes.concat(Array.from({ length: EMPTY_TUBES }, () => [] as number[]));
+    const sol = solve(board.map(x => x.slice()), 300000, undefined, 0, cap);
+    if (sol && sol.length) {
+      const withMod = assignModifier(board, lv, cap);
+      if (withMod) return { ...withMod, optimal: withMod.optimal || sol.length };
+      return { tubes: board, optimal: sol.length, mods: board.map(() => null) };
+    }
+  }
 
-  // One bounded solve for the optimal-move estimate used by star scoring. The
-  // board is solvable by construction, so this returns quickly; if the search
-  // is capped we fall back to a lenient estimate.
-  const sol = solve(board.map(x => x.slice()), 200000, undefined, 0, cap);
-  const optimal = sol ? sol.length : colors * 2;
-
-  const withMod = assignModifier(board, lv, cap);
-  if (withMod) return { ...withMod, optimal: withMod.optimal || optimal };
-  return { tubes: board, optimal, mods: board.map(() => null) };
+  // Fallback (astronomically unlikely): a board with one extra empty is even
+  // more reliably solvable.
+  const bag: number[] = [];
+  for (let c = 0; c < colors; c++) for (let k = 0; k < cap; k++) bag.push(c);
+  shuffleInPlace(bag);
+  const tubes: Tube[] = [];
+  for (let i = 0; i < colors; i++) tubes.push(bag.slice(i * cap, (i + 1) * cap));
+  const board = tubes.concat(Array.from({ length: EMPTY_TUBES + 1 }, () => [] as number[]));
+  const sol = solve(board.map(x => x.slice()), 300000, undefined, 0, cap);
+  return { tubes: board, optimal: sol ? sol.length : colors * 2, mods: board.map(() => null) };
 }
 
 // Which special-tube kinds are available at a given level. They unlock

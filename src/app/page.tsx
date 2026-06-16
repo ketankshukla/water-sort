@@ -10,7 +10,7 @@ import Confetti from "@/components/Confetti";
 export default function Home() {
   const {
     state, boardRef, registerTube, registerSegs,
-    selectTube, undo, addTube, hint, nextLevel, restart, toggleSound, setDifficulty,
+    selectTube, undo, addTube, hint, nextLevel, restart, toggleSound,
   } = useGame();
 
   const stars = starsFor(state.moves, state.optimal);
@@ -28,9 +28,7 @@ export default function Home() {
         moves={state.moves}
         score={state.score}
         sound={state.sound}
-        difficulty={state.difficulty}
         onToggleSound={toggleSound}
-        onSetDifficulty={setDifficulty}
       />
       <GameBoard
         tubes={state.tubes}

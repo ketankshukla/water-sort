@@ -1,21 +1,15 @@
 "use client";
 
-import { Difficulty, DIFFICULTY_SETTINGS } from "@/lib/game";
-
 interface GameHeaderProps {
   level: number;
   moves: number;
   score: number;
   sound: boolean;
-  difficulty: Difficulty;
   onToggleSound: () => void;
-  onSetDifficulty: (d: Difficulty) => void;
 }
 
-const ORDER: Difficulty[] = ["casual", "normal", "hard"];
-
 export default function GameHeader({
-  level, moves, score, sound, difficulty, onToggleSound, onSetDifficulty,
+  level, moves, score, sound, onToggleSound,
 }: GameHeaderProps) {
   return (
     <header className="w-full max-w-[900px] flex flex-col gap-[10px] px-5 pt-[18px] pb-[6px]">
@@ -36,30 +30,6 @@ export default function GameHeader({
         >
           {sound ? "🔊" : "🔇"}
         </button>
-      </div>
-
-      {/* Difficulty selector: switching presets restarts the current level with
-          a new capacity / empty-tube count / color count. */}
-      <div
-        className="flex items-center gap-[4px] rounded-full bg-[#1a2142] p-[4px] self-start"
-        role="group"
-        aria-label="Difficulty"
-      >
-        {ORDER.map(d => {
-          const active = d === difficulty;
-          return (
-            <button
-              key={d}
-              onClick={() => onSetDifficulty(d)}
-              aria-pressed={active}
-              className={`rounded-full px-[14px] py-[6px] text-[14px] font-semibold leading-none cursor-pointer border-none transition-colors active:scale-[0.96] ${
-                active ? "bg-[#3a7bfa] text-white" : "bg-transparent text-[#7d88ad]"
-              }`}
-            >
-              {DIFFICULTY_SETTINGS[d].label}
-            </button>
-          );
-        })}
       </div>
     </header>
   );
